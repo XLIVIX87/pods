@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: pods-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pods
+      POSTGRES_PASSWORD: pods_password
+      POSTGRES_DB: pods_db
+    ports:
+      - "5437:5432"
+    volumes:
+      - pods_pgdata:/var/lib/postgresql/data
+
+volumes:
+  pods_pgdata:

@@ -1,0 +1,22 @@
+{
+  "name": "PODS — Palm Oil Distribution System",
+  "short_name": "PODS",
+  "description": "Buy, Check, Pack, Stock, Sell, Money — manage your palm oil business",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fafaef",
+  "theme_color": "#904d00",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

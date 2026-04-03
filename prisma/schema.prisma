@@ -1,0 +1,265 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============ AUTH ============
+
+enum UserRole {
+  OPERATOR
+  INVESTOR
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String?  @unique
+  email     String?  @unique
+  password  String
+  role      UserRole @default(OPERATOR)
+  avatarUrl String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+// ============ SUPPLIERS ============
+
+model Supplier {
+  id        String   @id @default(cuid())
+  name      String
+  location  String?
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  purchases Purchase[]
+
+  @@map("suppliers")
+}
+
+// ============ PHASE 1: BUY ============
+
+enum PurchaseStatus {
+  PENDING_CHECK
+  ACCEPTED
+  REJECTED
+  ACCEPTED_WITH_NOTE
+}
+
+model Purchase {
+  id              String         @id @default(cuid())
+  supplierId      String
+  date            DateTime       @default(now())
+  kegs            Int
+  kegSizeLitres   Float          @default(25)
+  pricePerKeg     Float
+  transportCost   Float          @default(0)
+  totalCost       Float
+  costPerLitre    Float
+  photoUrl        String?
+  waybillPhotoUrl String?
+  gpsLat          Float?
+  gpsLng          Float?
+  status          PurchaseStatus @default(PENDING_CHECK)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  supplier        Supplier        @relation(fields: [supplierId], references: [id])
+  qualityCheck    QualityCheck?
+  packingSessions PackingSession[]
+  sales           Sale[]
+
+  @@map("purchases")
+}
+
+// ============ PHASE 2: CHECK ============
+
+enum QualityResult {
+  ACCEPT
+  REJECT
+  ACCEPT_WITH_NOTE
+}
+
+model QualityCheck {
+  id         String        @id @default(cuid())
+  purchaseId String        @unique
+  colourPass Boolean?
+  smellPass  Boolean?
+  tastePass  Boolean?
+  waterPass  Boolean?
+  result     QualityResult?
+  note       String?
+  photoUrl   String?
+  checkedAt  DateTime      @default(now())
+
+  purchase Purchase @relation(fields: [purchaseId], references: [id])
+
+  @@map("quality_checks")
+}
+
+// ============ PHASE 3: PACK ============
+
+model PackingSession {
+  id               String   @id @default(cuid())
+  purchaseId       String
+  kegsOpened       Int
+  litresAvailable  Float
+  litresPacked     Float    @default(0)
+  litresDifference Float    @default(0)
+  createdAt        DateTime @default(now())
+
+  purchase       Purchase       @relation(fields: [purchaseId], references: [id])
+  packedProducts PackedProduct[]
+
+  @@map("packing_sessions")
+}
+
+model PackedProduct {
+  id                String  @id @default(cuid())
+  packingSessionId  String
+  bottleSizeMl      Int
+  quantity          Int
+  costPerUnit       Float
+  selectedPriceTier String?
+  sellPrice         Float
+
+  packingSession PackingSession @relation(fields: [packingSessionId], references: [id])
+
+  @@map("packed_products")
+}
+
+// ============ BOTTLE PRICING ============
+
+model BottlePricing {
+  id                 String   @id @default(cuid())
+  bottleSizeMl       Int      @unique
+  containerCost      Float    @default(0)
+  currentCostPerUnit Float    @default(0)
+  safePrice          Float    @default(0)
+  goodPrice          Float    @default(0)
+  strongPrice        Float    @default(0)
+  selectedPrice      Float    @default(0)
+  updatedAt          DateTime @updatedAt
+
+  @@map("bottle_pricing")
+}
+
+// ============ STOCK ============
+
+enum StockItemType {
+  KEG
+  BOTTLE
+}
+
+model StockLevel {
+  id          String        @id @default(cuid())
+  itemType    StockItemType
+  sizeMl      Int
+  quantity    Int           @default(0)
+  totalLitres Float         @default(0)
+  totalValue  Float         @default(0)
+  lastUpdated DateTime      @updatedAt
+
+  @@unique([itemType, sizeMl])
+  @@map("stock_levels")
+}
+
+// ============ CUSTOMERS ============
+
+enum CustomerType {
+  NEW
+  RETURNING
+}
+
+model Customer {
+  id           String       @id @default(cuid())
+  name         String
+  phone        String?
+  location     String?
+  customerType CustomerType @default(NEW)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  sales Sale[]
+
+  @@map("customers")
+}
+
+// ============ PHASE 5: SELL ============
+
+enum DeliveryMethod {
+  DELIVER
+  PICKUP
+}
+
+model Sale {
+  id               String         @id @default(cuid())
+  customerId       String
+  date             DateTime       @default(now())
+  deliveryMethod   DeliveryMethod @default(PICKUP)
+  driverName       String?
+  deliveryCost     Float          @default(0)
+  totalAmount      Float
+  totalCost        Float
+  profit           Float
+  marginPct        Float
+  complaint        Boolean        @default(false)
+  complaintText    String?
+  sourcePurchaseId String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  customer       Customer   @relation(fields: [customerId], references: [id])
+  sourcePurchase Purchase?  @relation(fields: [sourcePurchaseId], references: [id])
+  items          SaleItem[]
+  payments       Payment[]
+
+  @@map("sales")
+}
+
+model SaleItem {
+  id           String @id @default(cuid())
+  saleId       String
+  bottleSizeMl Int
+  quantity     Int
+  unitPrice    Float
+  lineTotal    Float
+
+  sale Sale @relation(fields: [saleId], references: [id])
+
+  @@map("sale_items")
+}
+
+// ============ PHASE 6: MONEY ============
+
+enum PaymentMethod {
+  CASH
+  TRANSFER
+  POS
+}
+
+enum PaymentStatus {
+  PAID
+  PART
+  OWED
+}
+
+model Payment {
+  id                  String        @id @default(cuid())
+  saleId              String
+  amountPaid          Float
+  paymentMethod       PaymentMethod
+  balanceOwed         Float         @default(0)
+  paymentStatus       PaymentStatus @default(OWED)
+  expectedPaymentDate DateTime?
+  paidAt              DateTime      @default(now())
+
+  sale Sale @relation(fields: [saleId], references: [id])
+
+  @@map("payments")
+}

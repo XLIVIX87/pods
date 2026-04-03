@@ -1,0 +1,15 @@
+http:
+  routers:
+    pods:
+      rule: "Host(`pods.srv1528810.hstgr.cloud`)"
+      entryPoints:
+        - websecure
+      service: pods
+      tls:
+        certResolver: letsencrypt
+
+  services:
+    pods:
+      loadBalancer:
+        servers:
+          - url: "http://localhost:3005"
