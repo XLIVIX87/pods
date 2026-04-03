@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import TopBar from "@/components/layout/TopBar";
 import BottomNav from "@/components/layout/BottomNav";
 import { prisma } from "@/lib/prisma";
