@@ -12,4 +12,4 @@ http:
     pods:
       loadBalancer:
         servers:
-          - url: "http://localhost:3005"
+          - url: "http://localhost:3006"

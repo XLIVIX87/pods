@@ -19,7 +19,7 @@ services:
     container_name: pods-web
     restart: unless-stopped
     ports:
-      - "3005:3000"
+      - "127.0.0.1:3006:3000"
     environment:
       DATABASE_URL: "postgresql://pods:${POSTGRES_PASSWORD:-pods_secure_password_change_me}@db:5432/pods_db?schema=public"
       NEXTAUTH_URL: "https://pods.srv1528810.hstgr.cloud"
