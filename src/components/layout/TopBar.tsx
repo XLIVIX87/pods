@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -41,10 +42,14 @@ export default function TopBar({
         )}
         {variant === "brand" ? (
           <Link href="/" className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary">
-              agriculture
-            </span>
-            <h1 className="text-3xl font-bold text-primary font-headline italic tracking-tight">
+            <Image
+              src="/logo.svg"
+              alt="CYFoods"
+              width={40}
+              height={40}
+              className="h-10 w-auto"
+            />
+            <h1 className="text-2xl font-bold text-primary font-headline italic tracking-tight">
               PODS
             </h1>
           </Link>
