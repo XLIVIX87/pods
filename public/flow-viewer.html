@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PODS Flow Viewer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body, #root { height: 100%; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+  @media (prefers-color-scheme: dark) {
+    ::-webkit-scrollbar-thumb { background: #475569; }
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useMemo, useCallback, useRef } = React;
+
+/* ── colour tokens ── */
+const light = {
+  bg: '#f8f9fa', surface: '#ffffff', surfaceAlt: '#f1f5f9',
+  text: '#1e293b', textMuted: '#64748b', textFaint: '#94a3b8',
+  border: '#e2e8f0', borderLight: '#f1f5f9',
+  accent: '#2563eb', accentLight: '#dbeafe',
+  amber: '#f59e0b', amberLight: '#fef3c7', amberBorder: '#f59e0b',
+  red: '#ef4444', redLight: '#fee2e2', redBorder: '#ef4444',
+  green: '#22c55e', greenLight: '#dcfce7',
+  grey: '#6b7280', greyLight: '#f3f4f6',
+  blue: '#3b82f6', blueLight: '#dbeafe',
+  shadow: '0 1px 3px rgba(0,0,0,0.08)',
+  shadowLg: '0 4px 12px rgba(0,0,0,0.08)',
+};
+const dark = {
+  bg: '#0f172a', surface: '#1e293b', surfaceAlt: '#334155',
+  text: '#f1f5f9', textMuted: '#94a3b8', textFaint: '#64748b',
+  border: '#334155', borderLight: '#1e293b',
+  accent: '#3b82f6', accentLight: '#1e3a5f',
+  amber: '#f59e0b', amberLight: '#422006', amberBorder: '#b45309',
+  red: '#ef4444', redLight: '#450a0a', redBorder: '#b91c1c',
+  green: '#22c55e', greenLight: '#052e16',
+  grey: '#9ca3af', greyLight: '#1f2937',
+  blue: '#60a5fa', blueLight: '#1e3a5f',
+  shadow: '0 1px 3px rgba(0,0,0,0.3)',
+  shadowLg: '0 4px 12px rgba(0,0,0,0.3)',
+};
+
+function useTheme() {
+  const [isDark, setIsDark] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    setIsDark(mq.matches);
+    const h = e => setIsDark(e.matches);
+    mq.addEventListener('change', h);
+    return () => mq.removeEventListener('change', h);
+  }, []);
+  return isDark ? dark : light;
+}
+
+/* ── localStorage helper ── */
+const STORAGE_KEY = 'pods-flow-review';
+function loadReview() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || { comments: {}, reviewed: {} }; }
+  catch { return { comments: {}, reviewed: {} }; }
+}
+function saveReview(data) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+/* ── severity helpers ── */
+const sevColor = (s, t) => ({
+  critical: t.red, moderate: t.amber, minor: t.blue, suggestion: t.grey
+})[s] || t.grey;
+const sevBg = (s, t) => ({
+  critical: t.redLight, moderate: t.amberLight, minor: t.blueLight, suggestion: t.greyLight
+})[s] || t.greyLight;
+
+/* ── Badge ── */
+function Badge({ label, color, bg, style }) {
+  return React.createElement('span', { style: {
+    display: 'inline-flex', alignItems: 'center', padding: '2px 8px',
+    borderRadius: 9999, fontSize: 11, fontWeight: 600,
+    color, backgroundColor: bg, whiteSpace: 'nowrap', ...style
+  }}, label);
+}
+
+/* ── LeftSidebar ── */
+function LeftSidebar({ data, filters, setFilters, selectedFlowId, setSelectedFlowId, setSelectedStep, setSelectedFinding, t }) {
+  const roles = data.roles || [];
+  const flowTypes = [...new Set(data.flows.map(f => f.flow_type))];
+  const severities = ['critical', 'moderate', 'minor', 'suggestion'];
+
+  const grouped = useMemo(() => {
+    const filtered = data.flows.filter(f => {
+      if (filters.roles.length > 0 && !f.user_roles.some(r => filters.roles.includes(r))) return false;
+      if (filters.flowType && f.flow_type !== filters.flowType) return false;
+      if (filters.severity && !f.findings.some(fn => fn.severity === filters.severity)) return false;
+      if (filters.search) {
+        const q = filters.search.toLowerCase();
+        const inName = f.flow_name.toLowerCase().includes(q);
+        const inSteps = f.steps.some(s => s.description.toLowerCase().includes(q));
+        const inFindings = f.findings.some(fn => fn.description.toLowerCase().includes(q) || fn.title.toLowerCase().includes(q));
+        if (!inName && !inSteps && !inFindings) return false;
+      }
+      return true;
+    });
+    const g = {};
+    filtered.forEach(f => { (g[f.flow_type] = g[f.flow_type] || []).push(f); });
+    return g;
+  }, [data, filters]);
+
+  const sidebarStyle = {
+    width: 260, minWidth: 260, height: '100%', backgroundColor: t.surface,
+    borderRight: `1px solid ${t.border}`, display: 'flex', flexDirection: 'column',
+    overflow: 'hidden',
+  };
+
+  const inputStyle = {
+    width: '100%', padding: '7px 10px', borderRadius: 6,
+    border: `1px solid ${t.border}`, backgroundColor: t.bg,
+    color: t.text, fontSize: 13, outline: 'none',
+  };
+
+  return React.createElement('div', { style: sidebarStyle },
+    React.createElement('div', { style: { padding: 16, borderBottom: `1px solid ${t.border}` } },
+      React.createElement('div', { style: { fontWeight: 700, fontSize: 14, color: t.text, marginBottom: 12 } }, 'Filters'),
+      /* search */
+      React.createElement('input', {
+        placeholder: 'Search flows...', style: { ...inputStyle, marginBottom: 10 },
+        value: filters.search, onChange: e => setFilters(p => ({ ...p, search: e.target.value }))
+      }),
+      /* roles */
+      React.createElement('div', { style: { marginBottom: 10 } },
+        React.createElement('div', { style: { fontSize: 11, fontWeight: 600, color: t.textMuted, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 } }, 'Roles'),
+        roles.map(r => React.createElement('label', {
+          key: r.role_id,
+          style: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: t.text, cursor: 'pointer', marginBottom: 2 }
+        },
+          React.createElement('input', {
+            type: 'checkbox',
+            checked: filters.roles.includes(r.role_id),
+            onChange: () => setFilters(p => ({
+              ...p, roles: p.roles.includes(r.role_id) ? p.roles.filter(x => x !== r.role_id) : [...p.roles, r.role_id]
+            }))
+          }),
+          r.role_name
+        ))
+      ),
+      /* flow type */
+      React.createElement('div', { style: { marginBottom: 10 } },
+        React.createElement('div', { style: { fontSize: 11, fontWeight: 600, color: t.textMuted, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 } }, 'Flow Type'),
+        React.createElement('select', {
+          style: { ...inputStyle, cursor: 'pointer' },
+          value: filters.flowType,
+          onChange: e => setFilters(p => ({ ...p, flowType: e.target.value }))
+        },
+          React.createElement('option', { value: '' }, 'All types'),
+          flowTypes.map(ft => React.createElement('option', { key: ft, value: ft }, ft))
+        )
+      ),
+      /* severity */
+      React.createElement('div', null,
+        React.createElement('div', { style: { fontSize: 11, fontWeight: 600, color: t.textMuted, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 } }, 'Has Severity'),
+        React.createElement('select', {
+          style: { ...inputStyle, cursor: 'pointer' },
+          value: filters.severity,
+          onChange: e => setFilters(p => ({ ...p, severity: e.target.value }))
+        },
+          React.createElement('option', { value: '' }, 'Any'),
+          severities.map(s => React.createElement('option', { key: s, value: s }, s))
+        )
+      )
+    ),
+    /* flow list */
+    React.createElement('div', { style: { flex: 1, overflowY: 'auto', padding: '8px 0' } },
+      Object.entries(grouped).map(([type, flows]) =>
+        React.createElement('div', { key: type, style: { marginBottom: 8 } },
+          React.createElement('div', { style: {
+            padding: '4px 16px', fontSize: 10, fontWeight: 700, color: t.textFaint,
+            textTransform: 'uppercase', letterSpacing: 0.8
+          }}, type),
+          flows.map(f => {
+            const isActive = f.flow_id === selectedFlowId;
+            const hasCritical = f.findings.some(fn => fn.severity === 'critical');
+            return React.createElement('div', {
+              key: f.flow_id,
+              onClick: () => { setSelectedFlowId(f.flow_id); setSelectedStep(null); setSelectedFinding(null); },
+              style: {
+                padding: '8px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
+                backgroundColor: isActive ? t.accentLight : 'transparent',
+                borderLeft: isActive ? `3px solid ${t.accent}` : '3px solid transparent',
+                transition: 'background 0.15s',
+              },
+              onMouseEnter: e => { if (!isActive) e.currentTarget.style.backgroundColor = t.surfaceAlt; },
+              onMouseLeave: e => { if (!isActive) e.currentTarget.style.backgroundColor = 'transparent'; },
+            },
+              React.createElement('div', { style: { flex: 1, minWidth: 0 } },
+                React.createElement('div', { style: {
+                  fontSize: 13, fontWeight: isActive ? 600 : 400, color: t.text,
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                }}, f.flow_name),
+                React.createElement('div', { style: { fontSize: 11, color: t.textMuted } }, f.steps.length + ' steps')
+              ),
+              f.findings.length > 0 && React.createElement(Badge, {
+                label: f.findings.length,
+                color: hasCritical ? t.red : t.amber,
+                bg: hasCritical ? t.redLight : t.amberLight,
+              })
+            );
+          })
+        )
+      ),
+      Object.keys(grouped).length === 0 && React.createElement('div', {
+        style: { padding: 24, textAlign: 'center', color: t.textMuted, fontSize: 13 }
+      }, 'No flows match filters')
+    )
+  );
+}
+
+/* ── SummaryDashboard ── */
+function SummaryDashboard({ data, t }) {
+  const { flows, cross_flow_findings, summary } = data;
+  const allFindings = [...flows.flatMap(f => f.findings), ...cross_flow_findings];
+  const bySev = { critical: 0, moderate: 0, minor: 0, suggestion: 0 };
+  allFindings.forEach(f => { bySev[f.severity] = (bySev[f.severity] || 0) + 1; });
+  const maxSev = Math.max(...Object.values(bySev), 1);
+
+  const typeCount = {};
+  flows.forEach(f => { typeCount[f.flow_type] = (typeCount[f.flow_type] || 0) + 1; });
+
+  const card = (extra) => ({
+    backgroundColor: t.surface, borderRadius: 10, padding: 20,
+    boxShadow: t.shadow, border: `1px solid ${t.border}`, ...extra,
+  });
+
+  return React.createElement('div', { style: { padding: 28, overflowY: 'auto', height: '100%' } },
+    React.createElement('h1', { style: { fontSize: 22, fontWeight: 700, color: t.text, marginBottom: 4 } }, 'PODS Flow Review Dashboard'),
+    React.createElement('p', { style: { fontSize: 14, color: t.textMuted, marginBottom: 24 } },
+      data.meta.project_name + ' \u2014 ' + data.meta.total_flows + ' flows, ' + data.meta.total_steps + ' steps analysed'),
+
+    /* stat row */
+    React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 24 } },
+      [
+        { label: 'Total Flows', value: flows.length, color: t.accent },
+        { label: 'Total Steps', value: flows.reduce((a, f) => a + f.steps.length, 0), color: t.accent },
+        { label: 'Findings', value: allFindings.length, color: t.amber },
+        { label: 'Critical', value: bySev.critical, color: t.red },
+      ].map(s => React.createElement('div', { key: s.label, style: card() },
+        React.createElement('div', { style: { fontSize: 28, fontWeight: 700, color: s.color } }, s.value),
+        React.createElement('div', { style: { fontSize: 12, color: t.textMuted, marginTop: 2 } }, s.label)
+      ))
+    ),
+
+    React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 } },
+      /* flow types */
+      React.createElement('div', { style: card() },
+        React.createElement('h3', { style: { fontSize: 14, fontWeight: 600, color: t.text, marginBottom: 12 } }, 'Flows by Type'),
+        Object.entries(typeCount).map(([type, count]) => {
+          const pct = (count / flows.length) * 100;
+          return React.createElement('div', { key: type, style: { marginBottom: 8 } },
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 12, color: t.textMuted, marginBottom: 3 } },
+              React.createElement('span', null, type),
+              React.createElement('span', null, count)
+            ),
+            React.createElement('div', { style: { height: 6, borderRadius: 3, backgroundColor: t.surfaceAlt } },
+              React.createElement('div', { style: { height: '100%', borderRadius: 3, backgroundColor: t.accent, width: pct + '%', transition: 'width 0.3s' } })
+            )
+          );
+        })
+      ),
+      /* severity bars */
+      React.createElement('div', { style: card() },
+        React.createElement('h3', { style: { fontSize: 14, fontWeight: 600, color: t.text, marginBottom: 12 } }, 'Findings by Severity'),
+        ['critical', 'moderate', 'minor', 'suggestion'].map(sev => {
+          const c = bySev[sev];
+          const pct = (c / maxSev) * 100;
+          return React.createElement('div', { key: sev, style: { marginBottom: 8 } },
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 12, color: t.textMuted, marginBottom: 3 } },
+              React.createElement('span', { style: { textTransform: 'capitalize' } }, sev),
+              React.createElement('span', null, c)
+            ),
+            React.createElement('div', { style: { height: 8, borderRadius: 4, backgroundColor: t.surfaceAlt } },
+              React.createElement('div', { style: { height: '100%', borderRadius: 4, backgroundColor: sevColor(sev, t), width: pct + '%', transition: 'width 0.3s' } })
+            )
+          );
+        })
+      )
+    ),
+
+    /* coverage matrix */
+    React.createElement('div', { style: { ...card(), marginBottom: 24 } },
+      React.createElement('h3', { style: { fontSize: 14, fontWeight: 600, color: t.text, marginBottom: 12 } }, 'Role Coverage Matrix'),
+      data.roles.map(role => React.createElement('div', { key: role.role_id, style: { marginBottom: 10 } },
+        React.createElement('div', { style: { fontSize: 13, fontWeight: 600, color: t.text, marginBottom: 4 } }, role.role_name),
+        React.createElement('div', { style: { fontSize: 12, color: t.textMuted, marginBottom: 4 } }, role.description),
+        React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 4 } },
+          role.accessible_flow_ids.map(fid => {
+            const fl = flows.find(f => f.flow_id === fid);
+            return React.createElement(Badge, {
+              key: fid, label: fl ? fl.flow_name : fid,
+              color: t.accent, bg: t.accentLight, style: { fontSize: 11 }
+            });
+          })
+        )
+      ))
+    ),
+
+    /* cross-flow findings */
+    cross_flow_findings.length > 0 && React.createElement('div', { style: { ...card(), marginBottom: 24 } },
+      React.createElement('h3', { style: { fontSize: 14, fontWeight: 600, color: t.text, marginBottom: 12 } }, 'Cross-Flow Findings'),
+      cross_flow_findings.map(f => React.createElement('div', { key: f.finding_id, style: {
+        padding: 12, marginBottom: 8, borderRadius: 8,
+        backgroundColor: sevBg(f.severity, t),
+        borderLeft: `3px solid ${sevColor(f.severity, t)}`,
+      }},
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 } },
+          React.createElement(Badge, { label: f.severity, color: sevColor(f.severity, t), bg: 'transparent' }),
+          React.createElement('span', { style: { fontSize: 13, fontWeight: 600, color: t.text } }, f.title)
+        ),
+        React.createElement('div', { style: { fontSize: 12, color: t.textMuted } }, f.description)
+      ))
+    ),
+
+    /* top recommendations */
+    React.createElement('div', { style: card() },
+      React.createElement('h3', { style: { fontSize: 14, fontWeight: 600, color: t.text, marginBottom: 12 } }, 'Top 5 Recommendations'),
+      (summary.top_recommendations || []).map(r => {
+        const effortColor = { low: t.green, medium: t.amber, high: t.red }[r.effort] || t.grey;
+        return React.createElement('div', { key: r.rank, style: {
+          display: 'flex', gap: 12, padding: 12, marginBottom: 8, borderRadius: 8,
+          backgroundColor: t.surfaceAlt, border: `1px solid ${t.border}`,
+        }},
+          React.createElement('div', { style: {
+            width: 28, height: 28, borderRadius: '50%', backgroundColor: t.accent,
+            color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 13, fontWeight: 700, flexShrink: 0,
+          }}, r.rank),
+          React.createElement('div', { style: { flex: 1 } },
+            React.createElement('div', { style: { fontSize: 13, fontWeight: 600, color: t.text, marginBottom: 2 } }, r.title),
+            React.createElement('div', { style: { fontSize: 12, color: t.textMuted, marginBottom: 4 } }, r.impact),
+            React.createElement(Badge, { label: r.effort + ' effort', color: effortColor, bg: 'transparent', style: { border: `1px solid ${effortColor}` } })
+          )
+        );
+      })
+    )
+  );
+}
+
+/* ── FlowDiagram ── */
+function FlowDiagram({ flow, selectedStep, setSelectedStep, selectedFinding, setSelectedFinding, reviewData, t }) {
+  const steps = flow.steps;
+  const findingsMap = {};
+  flow.findings.forEach(f => { (f.affected_step_ids || []).forEach(sid => { (findingsMap[sid] = findingsMap[sid] || []).push(f); }); });
+
+  const nodeStyle = (step) => {
+    const findings = findingsMap[step.step_id] || [];
+    const hasCritical = findings.some(f => f.severity === 'critical');
+    const hasModerate = findings.some(f => f.severity === 'moderate' || f.severity === 'minor');
+    const isSelected = selectedStep && selectedStep.step_id === step.step_id;
+    return {
+      backgroundColor: t.surface, borderRadius: 10, padding: 16,
+      border: hasCritical ? `2px solid ${t.red}` : hasModerate ? `2px solid ${t.amber}` : `1px solid ${t.border}`,
+      borderStyle: step.is_optional ? 'dashed' : 'solid',
+      boxShadow: isSelected ? `0 0 0 3px ${t.accentLight}` : t.shadow,
+      cursor: 'pointer', position: 'relative', maxWidth: 420, width: '100%',
+      transition: 'box-shadow 0.15s, transform 0.15s',
+      transform: isSelected ? 'scale(1.01)' : 'scale(1)',
+    };
+  };
+
+  const connector = React.createElement('div', { style: {
+    width: 2, height: 28, backgroundColor: t.border, margin: '0 auto',
+  }});
+
+  const arrow = React.createElement('div', { style: {
+    width: 0, height: 0, margin: '0 auto',
+    borderLeft: '6px solid transparent', borderRight: '6px solid transparent',
+    borderTop: `8px solid ${t.border}`,
+  }});
+
+  return React.createElement('div', { style: { padding: 28, overflowY: 'auto', height: '100%' } },
+    /* header */
+    React.createElement('div', { style: { marginBottom: 20 } },
+      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 } },
+        React.createElement('h2', { style: { fontSize: 20, fontWeight: 700, color: t.text } }, flow.flow_name),
+        React.createElement(Badge, { label: flow.flow_type, color: t.accent, bg: t.accentLight }),
+        React.createElement(Badge, { label: flow.priority, color: flow.priority === 'critical' ? t.red : t.amber, bg: flow.priority === 'critical' ? t.redLight : t.amberLight }),
+      ),
+      React.createElement('p', { style: { fontSize: 13, color: t.textMuted, marginBottom: 8 } }, flow.description),
+      React.createElement('div', { style: { fontSize: 12, color: t.textMuted } },
+        'Roles: ', flow.user_roles.join(', '), ' | ',
+        flow.findings.length, ' findings | ',
+        flow.steps.length, ' steps'
+      ),
+    ),
+
+    /* diagram */
+    React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center' } },
+      /* start node */
+      React.createElement('div', { style: {
+        backgroundColor: t.greenLight, border: `2px solid ${t.green}`, borderRadius: 20,
+        padding: '6px 16px', fontSize: 12, fontWeight: 600, color: t.green, marginBottom: 4,
+      }},
+        'START'
+      ),
+      flow.entry_points && flow.entry_points.map((ep, i) =>
+        React.createElement('div', { key: i, style: { fontSize: 11, color: t.textMuted, marginBottom: 2 } },
+          ep.label + (ep.location ? ' (' + ep.location + ')' : ''))
+      ),
+      connector,
+      arrow,
+
+      /* steps */
+      steps.map((step, idx) => {
+        const findings = findingsMap[step.step_id] || [];
+        return React.createElement(React.Fragment, { key: step.step_id },
+          React.createElement('div', {
+            style: nodeStyle(step),
+            onClick: () => { setSelectedStep(step); setSelectedFinding(null); },
+          },
+            /* step header */
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 } },
+              React.createElement('div', { style: {
+                width: 22, height: 22, borderRadius: '50%', backgroundColor: t.accent,
+                color: '#fff', fontSize: 11, fontWeight: 700,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}, step.step_order),
+              React.createElement('div', { style: { fontSize: 14, fontWeight: 600, color: t.text, flex: 1 } }, step.step_name),
+              step.is_optional && React.createElement(Badge, { label: 'optional', color: t.textMuted, bg: t.surfaceAlt }),
+            ),
+            React.createElement('div', { style: { fontSize: 12, color: t.textMuted, lineHeight: 1.5, marginBottom: 8 } }, step.description),
+            /* finding dots */
+            findings.length > 0 && React.createElement('div', { style: { display: 'flex', gap: 4, flexWrap: 'wrap' } },
+              findings.map(f => React.createElement('div', {
+                key: f.finding_id,
+                title: f.title,
+                onClick: (e) => { e.stopPropagation(); setSelectedFinding(f); setSelectedStep(step); },
+                style: {
+                  width: 10, height: 10, borderRadius: '50%', cursor: 'pointer',
+                  backgroundColor: sevColor(f.severity, t),
+                  border: selectedFinding && selectedFinding.finding_id === f.finding_id ? `2px solid ${t.text}` : '2px solid transparent',
+                }
+              }))
+            ),
+            /* branches */
+            step.branches && step.branches.length > 0 && React.createElement('div', { style: { marginTop: 8, borderTop: `1px solid ${t.border}`, paddingTop: 8 } },
+              step.branches.map((b, bi) => React.createElement('div', { key: bi, style: {
+                fontSize: 11, color: t.textMuted, display: 'flex', gap: 4, alignItems: 'center', marginBottom: 2,
+              }},
+                React.createElement('span', { style: { color: t.accent, fontSize: 13 } }, '\u2192'),
+                React.createElement('span', { style: { fontWeight: 500 } }, b.condition),
+                React.createElement('span', { style: { color: t.textFaint } }, '\u2014 ' + b.label),
+              ))
+            ),
+          ),
+          idx < steps.length - 1 && React.createElement(React.Fragment, null, connector, arrow),
+        );
+      }),
+
+      /* end nodes */
+      connector,
+      arrow,
+      flow.exit_points && flow.exit_points.length > 0
+        ? React.createElement('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' } },
+            flow.exit_points.map((ep, i) => React.createElement('div', { key: i, style: {
+              backgroundColor: t.redLight, border: `2px solid ${t.red}`, borderRadius: 20,
+              padding: '6px 14px', fontSize: 11, fontWeight: 600, color: t.red,
+            }}, ep.destination + ' (' + ep.condition + ')'))
+          )
+        : React.createElement('div', { style: {
+            backgroundColor: t.greyLight, border: `2px solid ${t.grey}`, borderRadius: 20,
+            padding: '6px 16px', fontSize: 12, fontWeight: 600, color: t.grey,
+          }}, 'END (no exit points)')
+    )
+  );
+}
+
+/* ── RightSidebar ── */
+function RightSidebar({ flow, selectedStep, selectedFinding, reviewData, setReviewData, t }) {
+  const [commentDraft, setCommentDraft] = useState('');
+
+  const saveComment = useCallback(() => {
+    if (!commentDraft.trim() || !selectedStep) return;
+    const key = flow.flow_id + '::' + selectedStep.step_id;
+    const updated = { ...reviewData };
+    if (!updated.comments[key]) updated.comments[key] = [];
+    updated.comments[key].push({ text: commentDraft.trim(), timestamp: new Date().toISOString() });
+    setReviewData(updated);
+    saveReview(updated);
+    setCommentDraft('');
+  }, [commentDraft, selectedStep, flow, reviewData, setReviewData]);
+
+  const toggleReviewed = useCallback(() => {
+    const updated = { ...reviewData };
+    updated.reviewed[flow.flow_id] = !updated.reviewed[flow.flow_id];
+    setReviewData(updated);
+    saveReview(updated);
+  }, [flow, reviewData, setReviewData]);
+
+  const exportReview = useCallback(() => {
+    const blob = new Blob([JSON.stringify({ ...reviewData, exportedAt: new Date().toISOString() }, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'flow-review.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }, [reviewData]);
+
+  const sidebarStyle = {
+    width: 300, minWidth: 300, height: '100%', backgroundColor: t.surface,
+    borderLeft: `1px solid ${t.border}`, display: 'flex', flexDirection: 'column',
+    overflow: 'hidden',
+  };
+
+  const isReviewed = reviewData.reviewed[flow ? flow.flow_id : ''];
+  const commentKey = flow && selectedStep ? flow.flow_id + '::' + selectedStep.step_id : null;
+  const existingComments = commentKey && reviewData.comments[commentKey] ? reviewData.comments[commentKey] : [];
+
+  return React.createElement('div', { style: sidebarStyle },
+    /* top buttons */
+    React.createElement('div', { style: { padding: 12, borderBottom: `1px solid ${t.border}`, display: 'flex', gap: 8 } },
+      flow && React.createElement('button', {
+        onClick: toggleReviewed,
+        style: {
+          flex: 1, padding: '6px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+          border: 'none',
+          backgroundColor: isReviewed ? t.greenLight : t.surfaceAlt,
+          color: isReviewed ? t.green : t.textMuted,
+        }
+      }, isReviewed ? '\u2713 Reviewed' : 'Mark Reviewed'),
+      React.createElement('button', {
+        onClick: exportReview,
+        style: {
+          flex: 1, padding: '6px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+          border: `1px solid ${t.border}`, backgroundColor: t.surface, color: t.text,
+        }
+      }, 'Export Review')
+    ),
+    /* content */
+    React.createElement('div', { style: { flex: 1, overflowY: 'auto', padding: 16 } },
+      /* finding detail */
+      selectedFinding && React.createElement('div', { style: {
+        marginBottom: 20, padding: 14, borderRadius: 10,
+        backgroundColor: sevBg(selectedFinding.severity, t),
+        borderLeft: `3px solid ${sevColor(selectedFinding.severity, t)}`,
+      }},
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 } },
+          React.createElement(Badge, { label: selectedFinding.severity, color: sevColor(selectedFinding.severity, t), bg: 'transparent', style: { border: `1px solid ${sevColor(selectedFinding.severity, t)}` } }),
+          React.createElement(Badge, { label: selectedFinding.category, color: t.textMuted, bg: t.surfaceAlt }),
+        ),
+        React.createElement('div', { style: { fontSize: 14, fontWeight: 600, color: t.text, marginBottom: 6 } }, selectedFinding.title),
+        React.createElement('div', { style: { fontSize: 12, color: t.textMuted, lineHeight: 1.5, marginBottom: 10 } }, selectedFinding.description),
+        React.createElement('div', { style: { fontSize: 11, fontWeight: 600, color: t.textMuted, textTransform: 'uppercase', marginBottom: 4 } }, 'Recommendation'),
+        React.createElement('div', { style: { fontSize: 12, color: t.text, lineHeight: 1.5 } }, selectedFinding.recommendation),
+      ),
+
+      /* step detail */
+      selectedStep ? React.createElement('div', null,
+        React.createElement('h3', { style: { fontSize: 15, fontWeight: 700, color: t.text, marginBottom: 12 } }, selectedStep.step_name),
+        [
+          { label: 'Description', value: selectedStep.description },
+          { label: 'User Action', value: selectedStep.user_action },
+          { label: 'System Response', value: selectedStep.system_response },
+          { label: 'Component', value: selectedStep.page_or_component },
+          { label: 'Est. Time', value: selectedStep.estimated_time_seconds ? selectedStep.estimated_time_seconds + 's' : null },
+        ].filter(x => x.value).map(item =>
+          React.createElement('div', { key: item.label, style: { marginBottom: 10 } },
+            React.createElement('div', { style: { fontSize: 11, fontWeight: 600, color: t.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 } }, item.label),
+            React.createElement('div', { style: { fontSize: 12, color: t.text, lineHeight: 1.5 } }, item.value)
+          )
+        ),
+        /* pain points */
+        selectedStep.pain_points && selectedStep.pain_points.length > 0 && React.createElement('div', { style: { marginBottom: 10 } },
+          React.createElement('div', { style: { fontSize: 11, fontWeight: 600, color: t.amber, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 } }, 'Pain Points'),
+          selectedStep.pain_points.map((pp, i) => React.createElement('div', { key: i, style: {
+            fontSize: 12, color: t.text, lineHeight: 1.5, padding: '4px 8px', marginBottom: 4,
+            borderRadius: 6, backgroundColor: t.amberLight, borderLeft: `2px solid ${t.amber}`,
+          }}, pp))
+        ),
+
+        /* comments */
+        React.createElement('div', { style: { marginTop: 16, borderTop: `1px solid ${t.border}`, paddingTop: 12 } },
+          React.createElement('div', { style: { fontSize: 11, fontWeight: 600, color: t.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 } },
+            'Comments (' + existingComments.length + ')'),
+          existingComments.map((c, i) => React.createElement('div', { key: i, style: {
+            fontSize: 12, color: t.text, padding: '6px 8px', marginBottom: 4,
+            borderRadius: 6, backgroundColor: t.surfaceAlt,
+          }},
+            React.createElement('div', null, c.text),
+            React.createElement('div', { style: { fontSize: 10, color: t.textFaint, marginTop: 2 } }, new Date(c.timestamp).toLocaleString()),
+          )),
+          React.createElement('textarea', {
+            value: commentDraft, onChange: e => setCommentDraft(e.target.value),
+            placeholder: 'Add a comment...',
+            rows: 3,
+            style: {
+              width: '100%', padding: 8, borderRadius: 6, border: `1px solid ${t.border}`,
+              backgroundColor: t.bg, color: t.text, fontSize: 12, resize: 'vertical',
+              outline: 'none', marginBottom: 6, fontFamily: 'inherit',
+            }
+          }),
+          React.createElement('button', {
+            onClick: saveComment,
+            disabled: !commentDraft.trim(),
+            style: {
+              width: '100%', padding: '6px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600,
+              border: 'none', cursor: commentDraft.trim() ? 'pointer' : 'default',
+              backgroundColor: commentDraft.trim() ? t.accent : t.surfaceAlt,
+              color: commentDraft.trim() ? '#fff' : t.textFaint,
+            }
+          }, 'Add Comment')
+        )
+      )
+      : !selectedFinding && React.createElement('div', { style: { textAlign: 'center', padding: 32, color: t.textMuted, fontSize: 13 } },
+          flow ? 'Select a step in the diagram to see details' : 'Select a flow from the sidebar'
+        )
+    )
+  );
+}
+
+/* ── App ── */
+function App() {
+  const t = useTheme();
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [selectedFlowId, setSelectedFlowId] = useState(null);
+  const [selectedStep, setSelectedStep] = useState(null);
+  const [selectedFinding, setSelectedFinding] = useState(null);
+  const [filters, setFilters] = useState({ roles: [], flowType: '', severity: '', search: '' });
+  const [reviewData, setReviewData] = useState(loadReview);
+  const [collapsed, setCollapsed] = useState({ left: false, right: false });
+
+  useEffect(() => {
+    fetch('user-flows.json')
+      .then(r => { if (!r.ok) throw new Error('Failed to load'); return r.json(); })
+      .then(d => { setData(d); setLoading(false); })
+      .catch(e => { setError(e.message); setLoading(false); });
+  }, []);
+
+  const selectedFlow = data ? data.flows.find(f => f.flow_id === selectedFlowId) : null;
+
+  if (loading) return React.createElement('div', { style: {
+    height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: t.bg, color: t.textMuted, fontSize: 15,
+  }},
+    React.createElement('div', { style: { textAlign: 'center' } },
+      React.createElement('div', { style: {
+        width: 36, height: 36, border: `3px solid ${t.border}`, borderTopColor: t.accent,
+        borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px',
+      }}),
+      'Loading user flows...',
+      React.createElement('style', null, '@keyframes spin{to{transform:rotate(360deg)}}')
+    )
+  );
+
+  if (error) return React.createElement('div', { style: {
+    height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: t.bg, color: t.red, fontSize: 14,
+  }}, 'Error: ' + error + '. Make sure user-flows.json is in the same directory.');
+
+  return React.createElement('div', { style: { height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: t.bg } },
+    /* topbar */
+    React.createElement('div', { style: {
+      height: 48, backgroundColor: t.surface, borderBottom: `1px solid ${t.border}`,
+      display: 'flex', alignItems: 'center', padding: '0 16px', gap: 12, flexShrink: 0,
+    }},
+      React.createElement('button', {
+        onClick: () => setCollapsed(p => ({ ...p, left: !p.left })),
+        style: { background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: t.textMuted, padding: '4px 8px', borderRadius: 4 },
+        title: 'Toggle sidebar',
+      }, collapsed.left ? '\u25b6' : '\u25c0'),
+      React.createElement('div', { style: { fontWeight: 700, fontSize: 15, color: t.text } }, 'PODS'),
+      React.createElement('div', { style: { fontSize: 12, color: t.textMuted } }, 'Flow Viewer'),
+      React.createElement('div', { style: { flex: 1 } }),
+      selectedFlow && React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+        React.createElement('span', { style: { fontSize: 13, color: t.text, fontWeight: 500 } }, selectedFlow.flow_name),
+        reviewData.reviewed[selectedFlow.flow_id] && React.createElement(Badge, { label: 'Reviewed', color: t.green, bg: t.greenLight }),
+      ),
+      React.createElement('button', {
+        onClick: () => { setSelectedFlowId(null); setSelectedStep(null); setSelectedFinding(null); },
+        style: {
+          background: 'none', border: `1px solid ${t.border}`, cursor: 'pointer', fontSize: 12,
+          color: t.textMuted, padding: '4px 12px', borderRadius: 6,
+        },
+      }, 'Dashboard'),
+      React.createElement('button', {
+        onClick: () => setCollapsed(p => ({ ...p, right: !p.right })),
+        style: { background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: t.textMuted, padding: '4px 8px', borderRadius: 4 },
+        title: 'Toggle detail panel',
+      }, collapsed.right ? '\u25c0' : '\u25b6'),
+    ),
+    /* main area */
+    React.createElement('div', { style: { flex: 1, display: 'flex', overflow: 'hidden' } },
+      !collapsed.left && React.createElement(LeftSidebar, {
+        data, filters, setFilters, selectedFlowId, setSelectedFlowId, setSelectedStep, setSelectedFinding, t
+      }),
+      React.createElement('div', { style: { flex: 1, overflow: 'hidden' } },
+        selectedFlow
+          ? React.createElement(FlowDiagram, { flow: selectedFlow, selectedStep, setSelectedStep, selectedFinding, setSelectedFinding, reviewData, t })
+          : React.createElement(SummaryDashboard, { data, t })
+      ),
+      !collapsed.right && React.createElement(RightSidebar, {
+        flow: selectedFlow, selectedStep, selectedFinding, reviewData, setReviewData, t
+      }),
+    )
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+</script>
+</body>
+</html>

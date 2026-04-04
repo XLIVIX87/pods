@@ -1,0 +1,929 @@
+{
+  "meta": {
+    "project_name": "PODS — Palm Oil Distribution System",
+    "generated_at": "2026-04-04T16:30:00.000Z",
+    "total_flows": 12,
+    "total_steps": 42,
+    "roles_discovered": ["OPERATOR", "INVESTOR"],
+    "routes_scanned": 22,
+    "components_analysed": 18
+  },
+  "roles": [
+    {
+      "role_id": "operator",
+      "role_name": "Operator",
+      "description": "Primary user — the CYFoods founder who buys, checks, packs, stocks, sells oil and records payments. Non-technical, mobile-first.",
+      "accessible_flow_ids": [
+        "buy-oil", "quality-check", "pack-bottles", "view-stock",
+        "sell-oil", "record-payment", "view-money", "browse-customers",
+        "view-customer-detail", "home-dashboard"
+      ]
+    },
+    {
+      "role_id": "investor",
+      "role_name": "Investor",
+      "description": "Read-only dashboard viewer who sees business performance metrics auto-generated from operator entries.",
+      "accessible_flow_ids": ["investor-dashboard"]
+    }
+  ],
+  "flows": [
+    {
+      "flow_id": "home-dashboard",
+      "flow_name": "Home Dashboard",
+      "description": "Landing page showing quick stats (stock, owed, today's sales), 4 action buttons, and recent activity feed.",
+      "goal": "Get a quick overview of business status and navigate to key actions.",
+      "user_roles": ["operator"],
+      "entry_points": [
+        { "type": "nav_link", "location": "BottomNav", "label": "Home" },
+        { "type": "deep_link", "location": "/", "label": "Root URL" }
+      ],
+      "exit_points": [
+        { "destination": "/buy", "condition": "Tap 'Buy Oil' button" },
+        { "destination": "/pack", "condition": "Tap 'Pack Bottles' button" },
+        { "destination": "/sell", "condition": "Tap 'Sell Oil' button" },
+        { "destination": "/stock", "condition": "Tap 'Check Stock' button" }
+      ],
+      "priority": "critical",
+      "flow_type": "navigation",
+      "steps": [
+        {
+          "step_id": "home-view",
+          "step_order": 1,
+          "step_name": "View Dashboard",
+          "description": "Server-rendered page displays 3 stat cards (stock count, owed to me, sales today), 4 bento action buttons, and a list of up to 5 recent activities mixing sales and purchases.",
+          "page_or_component": "src/app/page.tsx",
+          "user_action": "Browse stats and recent activity",
+          "system_response": "Renders real-time data from database",
+          "branches": [
+            { "condition": "Tap Buy Oil", "next_step_id": "buy-step-1", "label": "Start Buy flow" },
+            { "condition": "Tap Pack Bottles", "next_step_id": "pack-step-1", "label": "Start Pack flow" },
+            { "condition": "Tap Sell Oil", "next_step_id": "sell-step-1", "label": "Start Sell flow" },
+            { "condition": "Tap Check Stock", "next_step_id": "stock-view", "label": "View Stock" }
+          ],
+          "can_go_back": false,
+          "is_optional": false,
+          "estimated_time_seconds": 5,
+          "pain_points": ["Activity items are not clickable — no way to drill into a specific sale or purchase from here"]
+        }
+      ],
+      "findings": [
+        {
+          "finding_id": "home-1",
+          "severity": "moderate",
+          "category": "missing-flow",
+          "title": "Activity items not interactive",
+          "description": "Recent activity cards show sales and purchases but are not clickable. Users cannot navigate to the detail of a specific sale or purchase from the home screen.",
+          "recommendation": "Wrap each activity item in a Link to /money/[saleId] for sales or /check/[purchaseId] for purchases.",
+          "affected_step_ids": ["home-view"]
+        },
+        {
+          "finding_id": "home-2",
+          "severity": "minor",
+          "category": "missing-flow",
+          "title": "No quick path to Quality Check",
+          "description": "The 4 bento buttons cover Buy, Pack, Sell, Stock — but not Quality Check. After buying, the user is auto-redirected to /check, but there's no way to return to a pending check from the home screen.",
+          "recommendation": "Add a badge or alert on the home screen showing 'X purchases awaiting quality check' with a link.",
+          "affected_step_ids": ["home-view"]
+        }
+      ]
+    },
+    {
+      "flow_id": "buy-oil",
+      "flow_name": "Buy Oil",
+      "description": "3-step wizard to record a palm oil purchase: select supplier, enter kegs/price, take delivery photo.",
+      "goal": "Record a new oil purchase from a supplier with pricing and delivery documentation.",
+      "user_roles": ["operator"],
+      "entry_points": [
+        { "type": "button", "location": "Home page bento grid", "label": "Buy Oil" },
+        { "type": "nav_link", "location": "BottomNav", "label": "Buy" }
+      ],
+      "exit_points": [
+        { "destination": "/check/[purchaseId]", "condition": "Purchase saved successfully" },
+        { "destination": "/", "condition": "User taps back arrow" }
+      ],
+      "priority": "critical",
+      "flow_type": "wizard",
+      "steps": [
+        {
+          "step_id": "buy-step-1",
+          "step_order": 1,
+          "step_name": "Select Supplier",
+          "description": "Search or select from recent suppliers. Option to add a new supplier with name and location.",
+          "page_or_component": "src/app/buy/page.tsx",
+          "user_action": "Tap a supplier chip or fill 'Add new supplier' form",
+          "system_response": "Highlights selected supplier, enables Next button",
+          "branches": [
+            { "condition": "Supplier selected", "next_step_id": "buy-step-2", "label": "Next Step" },
+            { "condition": "Add new supplier", "next_step_id": "buy-step-1-add", "label": "Show add form" }
+          ],
+          "can_go_back": true,
+          "is_optional": false,
+          "estimated_time_seconds": 10,
+          "pain_points": []
+        },
+        {
+          "step_id": "buy-step-1-add",
+          "step_order": 1,
+          "step_name": "Add New Supplier",
+          "description": "Inline form to create a new supplier with name and location. Auto-selects the new supplier after creation.",
+          "page_or_component": "src/app/buy/page.tsx",
+          "user_action": "Fill name + location, tap Add",
+          "system_response": "Creates supplier via POST /api/suppliers, auto-selects it",
+          "branches": [
+            { "condition": "Supplier created", "next_step_id": "buy-step-1", "label": "Return to selection" }
+          ],
+          "can_go_back": true,
+          "is_optional": true,
+          "estimated_time_seconds": 15,
+          "pain_points": ["No phone number field in the inline form — supplier phone is in schema but not collected here"]
+        },
+        {
+          "step_id": "buy-step-2",
+          "step_order": 2,
+          "step_name": "Enter Kegs & Price",
+          "description": "Set number of kegs (stepper), price per keg (₦ input), transport cost (₦ input). System auto-calculates total cost and cost per litre in a summary card.",
+          "page_or_component": "src/app/buy/page.tsx",
+          "user_action": "Adjust keg count, type price per keg and transport cost",
+          "system_response": "Real-time calculation of total cost and cost per litre in gradient summary card",
+          "branches": [
+            { "condition": "Price entered > 0", "next_step_id": "buy-step-3", "label": "Next Step" }
+          ],
+          "can_go_back": true,
+          "is_optional": false,
+          "estimated_time_seconds": 20,
+          "pain_points": []
+        },
+        {
+          "step_id": "buy-step-3",
+          "step_order": 3,
+          "step_name": "Take Delivery Photo",
+          "description": "Camera button to photograph the delivery kegs. Optional waybill photo button. Trusted Delivery Verification badge.",
+          "page_or_component": "src/app/buy/page.tsx",
+          "user_action": "Tap camera button (or skip), tap 'Save Purchase'",
+          "system_response": "Creates purchase via POST /api/purchases, updates keg stock, redirects to quality check",
+          "branches": [
+            { "condition": "Save successful", "next_step_id": "check-step-1", "label": "Go to Quality Check" }
+          ],
+          "can_go_back": true,
+          "is_optional": false,
+          "estimated_time_seconds": 10,
+          "pain_points": ["Camera is a placeholder — no actual photo capture or upload functionality implemented"]
+        }
+      ],
+      "findings": [
+        {
+          "finding_id": "buy-1",
+          "severity": "critical",
+          "category": "under-validation",
+          "title": "Photo capture not functional",
+          "description": "The camera button on Step 3 is a visual placeholder. No photo capture, file upload, or storage integration exists. The photoUrl field is never populated.",
+          "recommendation": "Implement file upload using <input type='file' accept='image/*' capture='environment'> with server-side storage (Supabase Storage or S3).",
+          "affected_step_ids": ["buy-step-3"]
+        },
+        {
+          "finding_id": "buy-2",
+          "severity": "minor",
+          "category": "inconsistency",
+          "title": "Supplier phone number not collected",
+          "description": "The Supplier model has a phone field, but the inline 'Add new supplier' form only collects name and location.",
+          "recommendation": "Add a phone number input to the new supplier form.",
+          "affected_step_ids": ["buy-step-1-add"]
+        },
+        {
+          "finding_id": "buy-3",
+          "severity": "minor",
+          "category": "missing-flow",
+          "title": "No purchase history or edit",
+          "description": "There is no way to view past purchases or edit a purchase after creation. The Buy nav link always starts a new purchase.",
+          "recommendation": "Add a purchase history view accessible from /buy, showing recent purchases with their status.",
+          "affected_step_ids": ["buy-step-1"]
+        }
+      ]
+    },
+    {
+      "flow_id": "quality-check",
+      "flow_name": "Quality Check",
+      "description": "Sensory quality assessment of a purchased batch: 4 yes/no tests followed by an accept/reject decision.",
+      "goal": "Determine if purchased oil meets quality standards before packing.",
+      "user_roles": ["operator"],
+      "entry_points": [
+        { "type": "redirect", "location": "/buy save action", "label": "Auto-redirect after purchase" },
+        { "type": "deep_link", "location": "/check/[purchaseId]", "label": "Direct URL" }
+      ],
+      "exit_points": [
+        { "destination": "/", "condition": "Decision saved (accept or reject)" }
+      ],
+      "priority": "critical",
+      "flow_type": "crud",
+      "steps": [
+        {
+          "step_id": "check-step-1",
+          "step_order": 1,
+          "step_name": "Run Quality Tests",
+          "description": "4 sensory tests displayed as cards: Colour (red-orange?), Smell (fresh?), Taste (right?), Water (at bottom?). Each has a green check and red X button.",
+          "page_or_component": "src/app/check/[purchaseId]/page.tsx",
+          "user_action": "Tap check or X for each of 4 tests",
+          "system_response": "Toggles test result, visual feedback with filled button state",
+          "branches": [],
+          "can_go_back": false,
+          "is_optional": false,
+          "estimated_time_seconds": 15,
+          "pain_points": ["Tests are not required — user can skip straight to decision buttons without testing"]
+        },
+        {
+          "step_id": "check-step-2",
+          "step_order": 2,
+          "step_name": "Make Decision",
+          "description": "3 decision buttons: Accept (green), Accept with note (amber — shows textarea), Reject (red). Optional camera button for oil photo.",
+          "page_or_component": "src/app/check/[purchaseId]/page.tsx",
+          "user_action": "Tap one of the 3 decision buttons",
+          "system_response": "POST /api/quality-checks, updates purchase status. If rejected, decrements stock. Redirects to home.",
+          "branches": [
+            { "condition": "Accept", "next_step_id": "home-view", "label": "Go home" },
+            { "condition": "Accept with note", "next_step_id": "check-step-note", "label": "Show note field" },
+            { "condition": "Reject", "next_step_id": "home-view", "label": "Go home (stock reverted)" }
+          ],
+          "can_go_back": false,
+          "is_optional": false,
+          "estimated_time_seconds": 5,
+          "pain_points": []
+        },
+        {
+          "step_id": "check-step-note",
+          "step_order": 3,
+          "step_name": "Add Note",
+          "description": "Textarea appears for describing the issue. User types note and taps 'Save with note'.",
+          "page_or_component": "src/app/check/[purchaseId]/page.tsx",
+          "user_action": "Type note, tap 'Save with note'",
+          "system_response": "Saves quality check with note, redirects to home",
+          "branches": [
+            { "condition": "Note saved", "next_step_id": "home-view", "label": "Go home" }
+          ],
+          "can_go_back": false,
+          "is_optional": true,
+          "estimated_time_seconds": 20,
+          "pain_points": []
+        }
+      ],
+      "findings": [
+        {
+          "finding_id": "check-1",
+          "severity": "moderate",
+          "category": "under-validation",
+          "title": "Quality tests not enforced",
+          "description": "The user can tap Accept/Reject without answering any of the 4 quality test questions. The test results are sent as null.",
+          "recommendation": "Require all 4 tests to be answered before enabling decision buttons, or at minimum show a confirmation dialog.",
+          "affected_step_ids": ["check-step-1", "check-step-2"]
+        },
+        {
+          "finding_id": "check-2",
+          "severity": "moderate",
+          "category": "missing-flow",
+          "title": "No reject follow-up action",
+          "description": "When oil is rejected, the user is sent home with no prompt to contact the supplier. The spec says 'If rejected, prompt to call supplier'.",
+          "recommendation": "After rejection, show a confirmation screen with a 'Call Supplier' button (tel: link) and WhatsApp option.",
+          "affected_step_ids": ["check-step-2"]
+        },
+        {
+          "finding_id": "check-3",
+          "severity": "minor",
+          "category": "dead-end",
+          "title": "No way to find pending quality checks",
+          "description": "If the user leaves the quality check page, there is no navigation path to return to pending checks. Only the auto-redirect from /buy leads here.",
+          "recommendation": "Show pending quality checks on the home screen or as a notification badge on the Buy tab.",
+          "affected_step_ids": ["check-step-1"]
+        }
+      ]
+    },
+    {
+      "flow_id": "pack-bottles",
+      "flow_name": "Pack Bottles",
+      "description": "3-step wizard to open kegs, fill bottles, reconcile litres, and set sell prices using the Smart Pricing Engine.",
+      "goal": "Convert bulk kegs into retail-sized bottles with optimal pricing.",
+      "user_roles": ["operator"],
+      "entry_points": [
+        { "type": "button", "location": "Home page bento grid", "label": "Pack Bottles" },
+        { "type": "deep_link", "location": "/pack", "label": "Direct URL" }
+      ],
+      "exit_points": [
+        { "destination": "/stock", "condition": "Batch saved successfully" }
+      ],
+      "priority": "critical",
+      "flow_type": "wizard",
+      "steps": [
+        {
+          "step_id": "pack-step-1",
+          "step_order": 1,
+          "step_name": "Select Batch & Kegs",
+          "description": "Shows accepted purchases. User selects one and chooses how many kegs to open. Displays litres available.",
+          "page_or_component": "src/app/pack/page.tsx",
+          "user_action": "Select purchase batch, adjust kegs to open",
+          "system_response": "Calculates litres available (kegs x 25L)",
+          "branches": [
+            { "condition": "Kegs selected > 0", "next_step_id": "pack-step-2", "label": "Next Step" }
+          ],
+          "can_go_back": true,
+          "is_optional": false,
+          "estimated_time_seconds": 10,
+          "pain_points": ["No empty state guidance when no accepted purchases exist"]
+        },
+        {
+          "step_id": "pack-step-2",
+          "step_order": 2,
+          "step_name": "Fill Bottles",
+          "description": "Grid of 6 bottle sizes (750ml-5L) with quantity selectors. Progress bar shows litres packed vs available. Warning when discrepancy exists.",
+          "page_or_component": "src/app/pack/page.tsx",
+          "user_action": "Set quantity for each bottle size",
+          "system_response": "Real-time litre reconciliation with progress bar and discrepancy warning",
+          "branches": [
+            { "condition": "At least one bottle filled", "next_step_id": "pack-step-3", "label": "Next Step" }
+          ],
+          "can_go_back": true,
+          "is_optional": false,
+          "estimated_time_seconds": 30,
+          "pain_points": []
+        },
+        {
+          "step_id": "pack-step-3",
+          "step_order": 3,
+          "step_name": "Set Prices (Smart Pricing)",
+          "description": "For each bottle size with quantity > 0, shows PriceTierSelector with 3 tiers: Safe (5%), Good (10% — recommended), Strong (20%). User taps to select.",
+          "page_or_component": "src/app/pack/page.tsx",
+          "user_action": "Tap a price tier for each bottle size, then 'Finish & Save Batch'",
+          "system_response": "POST /api/packing creates PackingSession, updates BottlePricing, adjusts stock (kegs down, bottles up). Redirects to stock view.",
+          "branches": [
+            { "condition": "Batch saved", "next_step_id": "stock-view", "label": "View Stock" }
+          ],
+          "can_go_back": true,
+          "is_optional": false,
+          "estimated_time_seconds": 20,
+          "pain_points": []
+        }
+      ],
+      "findings": [
+        {
+          "finding_id": "pack-1",
+          "severity": "minor",
+          "category": "over-complexity",
+          "title": "Can overfill bottles beyond available litres",
+          "description": "The bottle quantity selectors have no max constraint tied to available litres. User can enter 100 x 5L bottles when only 50L is available. The warning shows but doesn't prevent submission.",
+          "recommendation": "Either cap bottle quantities so total packed cannot exceed available litres, or require user confirmation when discrepancy > 5%.",
+          "affected_step_ids": ["pack-step-2"]
+        }
+      ]
+    },
+    {
+      "flow_id": "view-stock",
+      "flow_name": "View Stock",
+      "description": "Read-only inventory dashboard showing bulk kegs and packed bottles with quantities, litres, and values.",
+      "goal": "Check current inventory levels and identify low-stock items.",
+      "user_roles": ["operator"],
+      "entry_points": [
+        { "type": "button", "location": "Home page bento grid", "label": "Check Stock" },
+        { "type": "redirect", "location": "/pack save action", "label": "Auto-redirect after packing" },
+        { "type": "deep_link", "location": "/stock", "label": "Direct URL" }
+      ],
+      "exit_points": [
+        { "destination": "any bottom nav destination", "condition": "User navigates away" }
+      ],
+      "priority": "important",
+      "flow_type": "reporting",
+      "steps": [
+        {
+          "step_id": "stock-view",
+          "step_order": 1,
+          "step_name": "View Inventory",
+          "description": "Shows bulk kegs (count, litres, value) and packed bottles grid (per size with count, value). Low stock badge on items < 10. Fixed bottom summary bar with total litres and value.",
+          "page_or_component": "src/app/stock/page.tsx",
+          "user_action": "Browse (read-only)",
+          "system_response": "Server-rendered stock data",
+          "branches": [],
+          "can_go_back": true,
+          "is_optional": false,
+          "estimated_time_seconds": 10,
+          "pain_points": ["No action buttons — can't initiate a restock (buy) or pack session from here"]
+        }
+      ],
+      "findings": [
+        {
+          "finding_id": "stock-1",
+          "severity": "moderate",
+          "category": "missing-flow",
+          "title": "No stock confirmation or problem reporting",
+          "description": "The spec says the operator should 'confirm physical count matches system count' and 'flag problems: leaking, spoilage, storage issues'. This feature is not implemented.",
+          "recommendation": "Add a 'Confirm Stock' button and a 'Report Problem' flow for spoilage/leaking/discrepancy.",
+          "affected_step_ids": ["stock-view"]
+        },
+        {
+          "finding_id": "stock-2",
+          "severity": "suggestion",
+          "category": "missing-flow",
+          "title": "No quick restock action",
+          "description": "When stock is low, there's no shortcut to start a Buy or Pack flow.",
+          "recommendation": "Add contextual action buttons: 'Buy More' on low keg stock, 'Pack More' on low bottle stock.",
+          "affected_step_ids": ["stock-view"]
+        }
+      ]
+    },
+    {
+      "flow_id": "sell-oil",
+      "flow_name": "Sell Oil",
+      "description": "2-step flow to record a sale: pick a customer and select products with quantities.",
+      "goal": "Record an oil sale to a customer with automatic profit calculation.",
+      "user_roles": ["operator"],
+      "entry_points": [
+        { "type": "button", "location": "Home page bento grid", "label": "Sell Oil" },
+        { "type": "nav_link", "location": "BottomNav", "label": "Sell" },
+        { "type": "button", "location": "Customer detail page", "label": "New Sale to [customer]" }
+      ],
+      "exit_points": [
+        { "destination": "/money/[saleId]", "condition": "Sale saved successfully" }
+      ],
+      "priority": "critical",
+      "flow_type": "wizard",
+      "steps": [
+        {
+          "step_id": "sell-step-1",
+          "step_order": 1,
+          "step_name": "Select Customer",
+          "description": "Search existing customers or add new. Shows customer chips with 'Regular' or 'Owes ₦X' badges. Selected customer shows context card with last order info.",
+          "page_or_component": "src/app/sell/page.tsx",
+          "user_action": "Tap a customer chip or fill 'Add new customer' form",
+          "system_response": "Shows selected customer context (last order, usual sizes, outstanding balance)",
+          "branches": [
+            { "condition": "Customer selected", "next_step_id": "sell-step-2", "label": "Show products" }
+          ],
+          "can_go_back": true,
+          "is_optional": false,
+          "estimated_time_seconds": 10,
+          "pain_points": []
+        },
+        {
+          "step_id": "sell-step-2",
+          "step_order": 2,
+          "step_name": "Select Products & Complete",
+          "description": "Shows bottle sizes with pre-filled prices from Pack phase. Quantity selectors per size. Delivery method toggle (Pickup/Deliver). Fixed footer shows total, profit, margin %, and Complete Sale button.",
+          "page_or_component": "src/app/sell/page.tsx",
+          "user_action": "Set quantities per bottle size, choose delivery, tap Complete Sale",
+          "system_response": "POST /api/sales creates Sale + SaleItems, decrements stock, redirects to payment recording",
+          "branches": [
+            { "condition": "Sale saved", "next_step_id": "money-record", "label": "Record Payment" }
+          ],
+          "can_go_back": true,
+          "is_optional": false,
+          "estimated_time_seconds": 30,
+          "pain_points": ["No complaint field — spec says there should be a 'Complaints field: None / Yes (describe)'"]
+        }
+      ],
+      "findings": [
+        {
+          "finding_id": "sell-1",
+          "severity": "moderate",
+          "category": "missing-flow",
+          "title": "No complaint recording",
+          "description": "The spec requires a complaint field linked back to source supplier for traceability. The Sale model has complaint and complaintText fields but the UI doesn't expose them.",
+          "recommendation": "Add a 'Any complaint?' toggle at the bottom of the sell form with a text input that appears when Yes is selected.",
+          "affected_step_ids": ["sell-step-2"]
+        },
+        {
+          "finding_id": "sell-2",
+          "severity": "moderate",
+          "category": "missing-flow",
+          "title": "No wholesale (25L keg) option",
+          "description": "The spec says 'Sometimes CYFoods sells full 25L kegs directly without repackaging'. The sell form only shows bottle sizes from BottlePricing, not 25L keg option.",
+          "recommendation": "Add a '25L Keg' option to the product selector when keg stock is available, with pricing from the purchase cost + margin.",
+          "affected_step_ids": ["sell-step-2"]
+        },
+        {
+          "finding_id": "sell-3",
+          "severity": "minor",
+          "category": "under-validation",
+          "title": "No stock validation on sale",
+          "description": "User can sell more bottles than are in stock. The API decrements stock but doesn't check if sufficient stock exists.",
+          "recommendation": "Show available stock next to each bottle size and prevent selling more than available.",
+          "affected_step_ids": ["sell-step-2"]
+        }
+      ]
+    },
+    {
+      "flow_id": "view-money",
+      "flow_name": "View Money Overview",
+      "description": "Payment tracking dashboard showing outstanding balances and recently paid sales.",
+      "goal": "See who owes money and track collection progress.",
+      "user_roles": ["operator"],
+      "entry_points": [
+        { "type": "nav_link", "location": "BottomNav", "label": "Money" }
+      ],
+      "exit_points": [
+        { "destination": "/money/[saleId]", "condition": "Tap unpaid sale card" },
+        { "destination": "/sell", "condition": "Tap 'Make a Sale' CTA (empty state)" }
+      ],
+      "priority": "important",
+      "flow_type": "reporting",
+      "steps": [
+        {
+          "step_id": "money-overview",
+          "step_order": 1,
+          "step_name": "View Payment Status",
+          "description": "Shows 2 summary cards (Owed to me, Collected). Lists unpaid sales grouped as 'Awaiting Payment' and paid sales as 'Recently Paid'. Each card is clickable to record payment.",
+          "page_or_component": "src/app/money/page.tsx",
+          "user_action": "Tap an unpaid sale to record payment",
+          "system_response": "Navigates to /money/[saleId]",
+          "branches": [
+            { "condition": "Tap unpaid sale", "next_step_id": "money-record", "label": "Record Payment" }
+          ],
+          "can_go_back": true,
+          "is_optional": false,
+          "estimated_time_seconds": 10,
+          "pain_points": []
+        }
+      ],
+      "findings": []
+    },
+    {
+      "flow_id": "record-payment",
+      "flow_name": "Record Payment",
+      "description": "Record a payment against a sale: enter amount, select method, set expected date, generate WhatsApp reminder.",
+      "goal": "Track how much a customer paid and manage outstanding balances.",
+      "user_roles": ["operator"],
+      "entry_points": [
+        { "type": "redirect", "location": "/sell save action", "label": "Auto-redirect after sale" },
+        { "type": "button", "location": "/money overview", "label": "Tap unpaid sale card" }
+      ],
+      "exit_points": [
+        { "destination": "/sell", "condition": "Payment saved" }
+      ],
+      "priority": "critical",
+      "flow_type": "crud",
+      "steps": [
+        {
+          "step_id": "money-record",
+          "step_order": 1,
+          "step_name": "Enter Payment Details",
+          "description": "Context card shows customer name, sale items, total. Currency input for amount paid. Quick select buttons (Paid in full / Half / No payment). Payment method pills (Cash/Transfer/POS). Balance owed display. Expected payment date (conditional). Profit breakdown. WhatsApp reminder button.",
+          "page_or_component": "src/app/money/[saleId]/page.tsx",
+          "user_action": "Enter amount or tap quick-select, choose payment method, optionally set date and send WhatsApp reminder, tap 'Save & Done'",
+          "system_response": "POST /api/payments creates Payment record. Calculates balance and status (PAID/PART/OWED). Redirects to /sell.",
+          "branches": [
+            { "condition": "Balance remaining", "next_step_id": "money-record-date", "label": "Set expected date" },
+            { "condition": "Paid in full", "next_step_id": "money-done", "label": "Save and done" }
+          ],
+          "can_go_back": true,
+          "is_optional": false,
+          "estimated_time_seconds": 20,
+          "pain_points": ["Redirect goes to /sell after saving — should go to /money or / instead"]
+        },
+        {
+          "step_id": "money-record-date",
+          "step_order": 2,
+          "step_name": "Set Expected Payment Date",
+          "description": "Date picker appears when balance remains. WhatsApp reminder button generates contextual message with sale details and due date.",
+          "page_or_component": "src/app/money/[saleId]/page.tsx",
+          "user_action": "Pick a date, optionally tap WhatsApp reminder",
+          "system_response": "Opens WhatsApp with pre-filled message via wa.me deep link",
+          "branches": [],
+          "can_go_back": false,
+          "is_optional": true,
+          "estimated_time_seconds": 10,
+          "pain_points": []
+        }
+      ],
+      "findings": [
+        {
+          "finding_id": "money-1",
+          "severity": "moderate",
+          "category": "inconsistency",
+          "title": "Post-save redirect goes to /sell instead of /money",
+          "description": "After saving a payment, the user is redirected to /sell which is unexpected. They should return to the money overview or home.",
+          "recommendation": "Change redirect after payment save to /money (payment overview) or / (home).",
+          "affected_step_ids": ["money-record"]
+        },
+        {
+          "finding_id": "money-2",
+          "severity": "moderate",
+          "category": "missing-flow",
+          "title": "No multiple payment support",
+          "description": "If a customer makes a second partial payment on the same sale, there's no way to record it. The flow only handles one payment per sale visit.",
+          "recommendation": "Show payment history on the money detail page and allow recording additional payments.",
+          "affected_step_ids": ["money-record"]
+        },
+        {
+          "finding_id": "money-3",
+          "severity": "suggestion",
+          "category": "missing-flow",
+          "title": "No WhatsApp escalation tones",
+          "description": "The spec calls for escalating reminder tones: polite → firm → final notice based on days overdue. Currently only one tone is used.",
+          "recommendation": "Generate different message templates based on days overdue (0-7: polite, 8-14: firm, 15+: final notice).",
+          "affected_step_ids": ["money-record-date"]
+        }
+      ]
+    },
+    {
+      "flow_id": "browse-customers",
+      "flow_name": "Browse Customers",
+      "description": "Customer list with search, filters, and Customer Pulse alerts for inactive regulars.",
+      "goal": "View all customers, identify who owes money, and re-engage inactive regulars.",
+      "user_roles": ["operator"],
+      "entry_points": [
+        { "type": "nav_link", "location": "BottomNav", "label": "Customers" }
+      ],
+      "exit_points": [
+        { "destination": "/customers/[id]", "condition": "Tap a customer card" }
+      ],
+      "priority": "important",
+      "flow_type": "search",
+      "steps": [
+        {
+          "step_id": "customers-list",
+          "step_order": 1,
+          "step_name": "Browse Customer List",
+          "description": "Shows total customer count, search bar, filter pills (All/Owe Money/Regulars/New). Customer cards with initials avatar, name, location, total spent. Orange border on customers with debt. Customer Pulse banner for inactive regulars with WhatsApp CTA.",
+          "page_or_component": "src/app/customers/page.tsx",
+          "user_action": "Browse, search, filter, tap a customer, or tap WhatsApp on pulse alert",
+          "system_response": "Server-rendered customer list with calculated stats",
+          "branches": [
+            { "condition": "Tap customer card", "next_step_id": "customer-detail", "label": "View detail" }
+          ],
+          "can_go_back": true,
+          "is_optional": false,
+          "estimated_time_seconds": 15,
+          "pain_points": ["Search is server-rendered — no client-side filtering, requires page reload", "Filter pills are rendered but non-functional (no filter logic)"]
+        }
+      ],
+      "findings": [
+        {
+          "finding_id": "cust-1",
+          "severity": "moderate",
+          "category": "under-validation",
+          "title": "Filter pills non-functional",
+          "description": "The filter pills (All, Owe Money, Regulars, New) are rendered as static buttons but have no click handlers or filtering logic.",
+          "recommendation": "Implement client-side filtering or convert to a client component with state-based filtering.",
+          "affected_step_ids": ["customers-list"]
+        },
+        {
+          "finding_id": "cust-2",
+          "severity": "minor",
+          "category": "under-validation",
+          "title": "Search not interactive",
+          "description": "The search input exists but is rendered on a server component — typing doesn't filter results.",
+          "recommendation": "Convert to a client component with debounced search, or use searchParams-based server filtering.",
+          "affected_step_ids": ["customers-list"]
+        }
+      ]
+    },
+    {
+      "flow_id": "view-customer-detail",
+      "flow_name": "View Customer Detail",
+      "description": "Comprehensive customer profile with stats, payment reliability, order history, and action buttons.",
+      "goal": "Understand a customer's buying patterns, payment reliability, and outstanding balance.",
+      "user_roles": ["operator"],
+      "entry_points": [
+        { "type": "button", "location": "/customers list", "label": "Tap customer card" }
+      ],
+      "exit_points": [
+        { "destination": "/sell", "condition": "Tap 'New Sale to [customer]' CTA" }
+      ],
+      "priority": "important",
+      "flow_type": "reporting",
+      "steps": [
+        {
+          "step_id": "customer-detail",
+          "step_order": 1,
+          "step_name": "View Customer Profile",
+          "description": "Large initials avatar, name, location, phone. Call and WhatsApp buttons. Stats grid (orders, spent, avg). Payment reliability bar. 'Usually Buys' product chips. Outstanding balance card with reminder. Recent orders list.",
+          "page_or_component": "src/app/customers/[id]/page.tsx",
+          "user_action": "Browse profile, tap Call/WhatsApp, tap Send Reminder, tap New Sale",
+          "system_response": "Server-rendered customer data with calculated reliability %",
+          "branches": [
+            { "condition": "Tap New Sale CTA", "next_step_id": "sell-step-1", "label": "Start sale for this customer" }
+          ],
+          "can_go_back": true,
+          "is_optional": false,
+          "estimated_time_seconds": 15,
+          "pain_points": ["New Sale button links to /sell but doesn't pre-select this customer"]
+        }
+      ],
+      "findings": [
+        {
+          "finding_id": "custd-1",
+          "severity": "moderate",
+          "category": "inconsistency",
+          "title": "New Sale doesn't pre-select customer",
+          "description": "The 'New Sale to [customer]' CTA links to /sell but the sell page doesn't read a customer parameter — the user has to search for the customer again.",
+          "recommendation": "Pass customer ID as a query parameter (/sell?customerId=X) and auto-select in the sell page.",
+          "affected_step_ids": ["customer-detail"]
+        }
+      ]
+    },
+    {
+      "flow_id": "investor-dashboard",
+      "flow_name": "Investor Dashboard",
+      "description": "Read-only business performance dashboard with KPIs, charts, tables, and risk flags for investors.",
+      "goal": "View business health metrics auto-generated from operator daily entries.",
+      "user_roles": ["investor"],
+      "entry_points": [
+        { "type": "deep_link", "location": "/investor", "label": "Investor Dashboard URL" }
+      ],
+      "exit_points": [],
+      "priority": "important",
+      "flow_type": "reporting",
+      "steps": [
+        {
+          "step_id": "investor-view",
+          "step_order": 1,
+          "step_name": "View Dashboard",
+          "description": "Desktop/tablet optimized. 4 KPI cards (Revenue, Gross Profit, Cash Collected, Outstanding Debts). 2-col charts (Revenue & Profit Trend, Revenue by Product Size). 2-col tables (Top 5 Customers, Supplier Quality Scorecard). Risk flags section.",
+          "page_or_component": "src/app/investor/page.tsx",
+          "user_action": "Browse (read-only)",
+          "system_response": "Server-rendered 30-day business analytics",
+          "branches": [],
+          "can_go_back": false,
+          "is_optional": false,
+          "estimated_time_seconds": 60,
+          "pain_points": ["Nav tabs (Financials, Operations) are displayed but non-functional", "No date range picker — always shows 30 days", "No export or print functionality"]
+        }
+      ],
+      "findings": [
+        {
+          "finding_id": "inv-1",
+          "severity": "moderate",
+          "category": "dead-end",
+          "title": "Navigation tabs are non-functional",
+          "description": "The Investor Dashboard header shows 'Financials' and 'Operations' nav tabs but they have no click handlers and don't navigate anywhere.",
+          "recommendation": "Either implement the additional views or remove the tabs to avoid confusion.",
+          "affected_step_ids": ["investor-view"]
+        },
+        {
+          "finding_id": "inv-2",
+          "severity": "moderate",
+          "category": "missing-flow",
+          "title": "No date range picker",
+          "description": "The spec requires a date range picker. Dashboard always shows last 30 days with no way to change the time period.",
+          "recommendation": "Add a date range selector (preset options: 7d, 30d, 90d, custom) that filters all dashboard data.",
+          "affected_step_ids": ["investor-view"]
+        },
+        {
+          "finding_id": "inv-3",
+          "severity": "minor",
+          "category": "missing-flow",
+          "title": "No export or print",
+          "description": "The spec says 'exportable/printable'. No export or print functionality exists.",
+          "recommendation": "Add CSV export for tables and a print-friendly CSS stylesheet.",
+          "affected_step_ids": ["investor-view"]
+        },
+        {
+          "finding_id": "inv-4",
+          "severity": "moderate",
+          "category": "missing-flow",
+          "title": "No authentication gate",
+          "description": "The /investor route is publicly accessible. Any visitor can see business financials. NextAuth is configured but no route guard exists.",
+          "recommendation": "Add middleware or server-side auth check to restrict /investor to users with INVESTOR role.",
+          "affected_step_ids": ["investor-view"]
+        }
+      ]
+    },
+    {
+      "flow_id": "auth-login",
+      "flow_name": "Authentication (Not Implemented)",
+      "description": "NextAuth is configured with phone/email credentials, but no login UI or route guards exist yet.",
+      "goal": "Authenticate users and restrict access by role.",
+      "user_roles": ["operator", "investor"],
+      "entry_points": [
+        { "type": "redirect", "location": "NextAuth config", "label": "Redirect to /login" }
+      ],
+      "exit_points": [
+        { "destination": "/", "condition": "Operator login" },
+        { "destination": "/investor", "condition": "Investor login" }
+      ],
+      "priority": "critical",
+      "flow_type": "authentication",
+      "steps": [
+        {
+          "step_id": "login-form",
+          "step_order": 1,
+          "step_name": "Login Form (Missing)",
+          "description": "NextAuth is configured with a CredentialsProvider for phone/email + password, but no /login page exists. Auth callbacks set role and ID on the session.",
+          "page_or_component": "N/A — not yet created",
+          "user_action": "N/A",
+          "system_response": "N/A",
+          "branches": [],
+          "can_go_back": false,
+          "is_optional": false,
+          "estimated_time_seconds": 0,
+          "pain_points": ["Entire auth UI is missing — no login page, no logout, no route guards"]
+        }
+      ],
+      "findings": [
+        {
+          "finding_id": "auth-1",
+          "severity": "critical",
+          "category": "missing-flow",
+          "title": "No login page or route guards",
+          "description": "NextAuth is configured with credentials provider, session callbacks, and seed users, but no /login page exists and no routes are protected. All pages are publicly accessible.",
+          "recommendation": "Create /login page with phone/email input + password. Add middleware to protect operator routes and /investor route. Add logout button to TopBar.",
+          "affected_step_ids": ["login-form"]
+        }
+      ]
+    }
+  ],
+  "cross_flow_findings": [
+    {
+      "finding_id": "cross-1",
+      "severity": "critical",
+      "category": "missing-flow",
+      "title": "No authentication or route protection",
+      "description": "All pages are publicly accessible. NextAuth is configured but never enforced. Business data (financials, customers, suppliers) is exposed to anyone with the URL.",
+      "recommendation": "Implement login page, protect all operator routes with session check, protect /investor with role check.",
+      "affected_flow_ids": ["auth-login", "home-dashboard", "investor-dashboard"]
+    },
+    {
+      "finding_id": "cross-2",
+      "severity": "critical",
+      "category": "missing-flow",
+      "title": "Photo upload not implemented anywhere",
+      "description": "The Buy flow (delivery photo, waybill photo) and Quality Check flow (oil photo) have camera buttons that are visual placeholders with no actual file upload or storage.",
+      "recommendation": "Implement file input with camera capture, upload to server storage, and save URL to database.",
+      "affected_flow_ids": ["buy-oil", "quality-check"]
+    },
+    {
+      "finding_id": "cross-3",
+      "severity": "moderate",
+      "category": "inconsistency",
+      "title": "Inconsistent post-save redirects",
+      "description": "After saving: Buy → /check (good), Pack → /stock (good), Sell → /money/[id] (good), Money → /sell (bad — should go to /money or /). Quality Check → / (acceptable). No consistent pattern.",
+      "recommendation": "Standardize: after any save, redirect to the natural 'next step' in the value chain or back to the overview of the current section.",
+      "affected_flow_ids": ["buy-oil", "quality-check", "pack-bottles", "sell-oil", "record-payment"]
+    },
+    {
+      "finding_id": "cross-4",
+      "severity": "moderate",
+      "category": "missing-flow",
+      "title": "No offline support (PWA)",
+      "description": "The spec lists offline mode as 'NON-NEGOTIABLE for Nigerian infrastructure'. manifest.json exists but no service worker, IndexedDB, or sync queue is implemented.",
+      "recommendation": "Implement service worker for caching, IndexedDB for offline data entry, and a sync queue that replays API calls when connectivity returns.",
+      "affected_flow_ids": ["buy-oil", "sell-oil", "record-payment"]
+    },
+    {
+      "finding_id": "cross-5",
+      "severity": "moderate",
+      "category": "missing-flow",
+      "title": "No edit or delete capability for any entity",
+      "description": "No purchase, sale, payment, or customer can be edited or deleted after creation. If the operator makes a mistake, there's no way to correct it.",
+      "recommendation": "Add edit flows for purchases (before quality check), sales, and customer details. Consider soft-delete with audit trail.",
+      "affected_flow_ids": ["buy-oil", "sell-oil", "record-payment", "browse-customers"]
+    },
+    {
+      "finding_id": "cross-6",
+      "severity": "minor",
+      "category": "inconsistency",
+      "title": "Mixed client/server component patterns for similar pages",
+      "description": "Customers list is server-rendered (no interactive features work), while Sell page is client-rendered with similar search/filter needs. No consistent pattern for when to use server vs client.",
+      "recommendation": "Convert customer list to a client component for interactive search and filters, matching the sell page pattern.",
+      "affected_flow_ids": ["browse-customers", "sell-oil"]
+    }
+  ],
+  "summary": {
+    "total_findings": 24,
+    "critical_count": 4,
+    "moderate_count": 13,
+    "minor_count": 5,
+    "suggestion_count": 2,
+    "top_recommendations": [
+      {
+        "rank": 1,
+        "title": "Implement authentication and route protection",
+        "impact": "Security — all business data is currently publicly accessible",
+        "effort": "medium",
+        "description": "Create /login page, add middleware to protect operator routes, protect /investor with role check, add logout button."
+      },
+      {
+        "rank": 2,
+        "title": "Implement photo upload and storage",
+        "impact": "Core feature — delivery proof and quality documentation cannot be captured",
+        "effort": "medium",
+        "description": "Wire camera buttons to file inputs with capture attribute, implement server-side storage, save URLs to database."
+      },
+      {
+        "rank": 3,
+        "title": "Add offline support (service worker + IndexedDB)",
+        "impact": "Critical for Nigerian infrastructure — app is unusable without internet",
+        "effort": "high",
+        "description": "Implement service worker caching, IndexedDB for offline data entry, and API call sync queue."
+      },
+      {
+        "rank": 4,
+        "title": "Make customer filters and search functional",
+        "impact": "Usability — search and filter are visible but non-functional, causing confusion",
+        "effort": "low",
+        "description": "Convert customer list to client component, implement debounced search and filter state."
+      },
+      {
+        "rank": 5,
+        "title": "Add wholesale 25L keg sales and complaint recording",
+        "impact": "Missing business flows from the spec — wholesale path and quality traceability",
+        "effort": "low",
+        "description": "Add 25L keg to sell form, add complaint toggle with text input, link complaints to supplier."
+      }
+    ]
+  }
+}
