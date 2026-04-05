@@ -4,7 +4,8 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import TopBar from "@/components/layout/TopBar";
 import QuantitySelector from "@/components/shared/QuantitySelector";
-import { formatNaira, formatBottleSize, BOTTLE_SIZES } from "@/lib/utils";
+import CurrencyInput from "@/components/shared/CurrencyInput";
+import { formatNaira, formatBottleSize, SELL_SIZES } from "@/lib/utils";
 
 interface Customer {
   id: string;
@@ -12,14 +13,14 @@ interface Customer {
   phone: string | null;
   location: string | null;
   customerType: string;
-  sales: {
+  sales?: {
     id: string;
     date: string;
     totalAmount: number;
     items: { bottleSizeMl: number; quantity: number }[];
     payments: { amountPaid: number; balanceOwed: number }[];
   }[];
-  _count: { sales: number };
+  _count?: { sales: number };
 }
 
 interface BottlePrice {
@@ -48,9 +49,7 @@ export default function SellPage() {
   // Customers
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customerSearch, setCustomerSearch] = useState("");
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(
-    null
-  );
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [showAddCustomer, setShowAddCustomer] = useState(false);
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
@@ -61,9 +60,8 @@ export default function SellPage() {
   const [cart, setCart] = useState<Map<number, CartItem>>(new Map());
 
   // Delivery
-  const [deliveryMethod, setDeliveryMethod] = useState<"DELIVER" | "PICKUP">(
-    "PICKUP"
-  );
+  const [deliveryMethod, setDeliveryMethod] = useState<"DELIVER" | "PICKUP">("PICKUP");
+  const [transportCost, setTransportCost] = useState(0);
 
   // Fetch customers
   useEffect(() => {
@@ -73,18 +71,15 @@ export default function SellPage() {
       .catch(console.error);
   }, []);
 
-  // Fetch bottle pricing
+  // Fetch bottle pricing and init cart with ALL sell sizes
   useEffect(() => {
     fetch("/api/bottle-pricing")
       .then((r) => r.json())
       .then((prices: BottlePrice[]) => {
         setBottlePrices(prices);
-        // Initialize cart with zero quantities
         const initial = new Map<number, CartItem>();
-        for (const size of BOTTLE_SIZES) {
-          const pricing = prices.find(
-            (p: BottlePrice) => p.bottleSizeMl === size
-          );
+        for (const size of SELL_SIZES) {
+          const pricing = prices.find((p: BottlePrice) => p.bottleSizeMl === size);
           initial.set(size, {
             bottleSizeMl: size,
             quantity: 0,
@@ -109,11 +104,7 @@ export default function SellPage() {
     const res = await fetch("/api/customers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: newName,
-        phone: newPhone,
-        location: newLocation,
-      }),
+      body: JSON.stringify({ name: newName, phone: newPhone, location: newLocation }),
     });
     const customer = await res.json();
     setCustomers((prev) => [customer, ...prev]);
@@ -128,30 +119,32 @@ export default function SellPage() {
     setCart((prev) => {
       const next = new Map(prev);
       const item = next.get(sizeMl);
-      if (item) {
-        next.set(sizeMl, { ...item, quantity });
-      }
+      if (item) next.set(sizeMl, { ...item, quantity });
+      return next;
+    });
+  };
+
+  const updateCartPrice = (sizeMl: number, unitPrice: number) => {
+    setCart((prev) => {
+      const next = new Map(prev);
+      const item = next.get(sizeMl);
+      if (item) next.set(sizeMl, { ...item, unitPrice });
       return next;
     });
   };
 
   // Cart calculations
   const cartItems = Array.from(cart.values()).filter((i) => i.quantity > 0);
-  const totalAmount = cartItems.reduce(
-    (sum, i) => sum + i.unitPrice * i.quantity,
-    0
-  );
-  const totalCost = cartItems.reduce(
-    (sum, i) => sum + i.costPerUnit * i.quantity,
-    0
-  );
+  const totalProductAmount = cartItems.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
+  const effectiveTransport = deliveryMethod === "DELIVER" ? transportCost : 0;
+  const totalAmount = totalProductAmount + effectiveTransport;
+  const totalCost = cartItems.reduce((sum, i) => sum + i.costPerUnit * i.quantity, 0);
   const profit = totalAmount - totalCost;
   const marginPct = totalAmount > 0 ? (profit / totalAmount) * 100 : 0;
 
   // Customer context
   const lastSale = selectedCustomer?.sales?.[0];
-  const outstandingBalance =
-    lastSale?.payments?.reduce((sum, p) => sum + p.balanceOwed, 0) ?? 0;
+  const outstandingBalance = lastSale?.payments?.reduce((sum, p) => sum + p.balanceOwed, 0) ?? 0;
   const usualSizes = lastSale?.items?.map((i) => formatBottleSize(i.bottleSizeMl)).join(", ");
 
   const handleCompleteSale = async () => {
@@ -165,7 +158,7 @@ export default function SellPage() {
         body: JSON.stringify({
           customerId: selectedCustomer.id,
           deliveryMethod,
-          deliveryCost: 0,
+          deliveryCost: effectiveTransport,
           items: cartItems.map((i) => ({
             bottleSizeMl: i.bottleSizeMl,
             quantity: i.quantity,
@@ -198,11 +191,8 @@ export default function SellPage() {
               Who is buying?
             </h2>
 
-            {/* Search */}
             <div className="relative">
-              <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline">
-                search
-              </span>
+              <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline">search</span>
               <input
                 type="text"
                 value={customerSearch}
@@ -212,7 +202,6 @@ export default function SellPage() {
               />
             </div>
 
-            {/* Customer List */}
             <div className="space-y-3">
               <p className="font-label text-xs font-bold text-outline uppercase tracking-wider">
                 {customerSearch ? "Results" : "Recent customers"}
@@ -229,131 +218,67 @@ export default function SellPage() {
                     }`}
                   >
                     <span
-                      className={`material-symbols-outlined ${
-                        selectedCustomer?.id === customer.id
-                          ? "text-on-primary"
-                          : "text-tertiary"
-                      }`}
+                      className={`material-symbols-outlined ${selectedCustomer?.id === customer.id ? "text-on-primary" : "text-tertiary"}`}
                       style={{ fontVariationSettings: "'FILL' 1" }}
-                    >
-                      person
-                    </span>
-                    <span
-                      className={`font-medium ${
-                        selectedCustomer?.id === customer.id
-                          ? "text-on-primary"
-                          : "text-on-tertiary-fixed"
-                      }`}
-                    >
-                      {customer.name}
-                      {customer.location ? ` — ${customer.location}` : ""}
+                    >person</span>
+                    <span className={`font-medium ${selectedCustomer?.id === customer.id ? "text-on-primary" : "text-on-tertiary-fixed"}`}>
+                      {customer.name}{customer.location ? ` — ${customer.location}` : ""}
                     </span>
                   </button>
                 ))}
               </div>
 
-              {/* Add new customer */}
               {!showAddCustomer ? (
                 <button
                   onClick={() => setShowAddCustomer(true)}
                   className="flex items-center gap-2 pt-2 text-success font-semibold active:scale-95 transition-transform"
                 >
-                  <span className="material-symbols-outlined text-[20px]">
-                    person_add
-                  </span>
+                  <span className="material-symbols-outlined text-[20px]">person_add</span>
                   <span>Add new customer</span>
                 </button>
               ) : (
                 <div className="bg-surface-container-low p-4 rounded-xl space-y-3">
-                  <input
-                    type="text"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    placeholder="Customer name"
-                    className="w-full h-12 px-4 bg-surface-container-lowest border-none ring-1 ring-outline/15 rounded-xl focus:ring-2 focus:ring-primary text-lg"
-                  />
-                  <input
-                    type="tel"
-                    value={newPhone}
-                    onChange={(e) => setNewPhone(e.target.value)}
-                    placeholder="Phone number"
-                    className="w-full h-12 px-4 bg-surface-container-lowest border-none ring-1 ring-outline/15 rounded-xl focus:ring-2 focus:ring-primary text-lg"
-                  />
-                  <input
-                    type="text"
-                    value={newLocation}
-                    onChange={(e) => setNewLocation(e.target.value)}
-                    placeholder="Location (e.g., Surulere)"
-                    className="w-full h-12 px-4 bg-surface-container-lowest border-none ring-1 ring-outline/15 rounded-xl focus:ring-2 focus:ring-primary text-lg"
-                  />
+                  <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Customer name" className="w-full h-12 px-4 bg-surface-container-lowest border-none ring-1 ring-outline/15 rounded-xl focus:ring-2 focus:ring-primary text-lg" />
+                  <input type="tel" value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="Phone number" className="w-full h-12 px-4 bg-surface-container-lowest border-none ring-1 ring-outline/15 rounded-xl focus:ring-2 focus:ring-primary text-lg" />
+                  <input type="text" value={newLocation} onChange={(e) => setNewLocation(e.target.value)} placeholder="Location (e.g., Surulere)" className="w-full h-12 px-4 bg-surface-container-lowest border-none ring-1 ring-outline/15 rounded-xl focus:ring-2 focus:ring-primary text-lg" />
                   <div className="flex gap-2">
-                    <button
-                      onClick={() => setShowAddCustomer(false)}
-                      className="flex-1 h-12 bg-surface-container-highest text-on-surface-variant rounded-xl font-medium"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={handleAddCustomer}
-                      disabled={!newName}
-                      className="flex-1 h-12 bg-primary text-on-primary rounded-xl font-bold disabled:opacity-50"
-                    >
-                      Add
-                    </button>
+                    <button onClick={() => setShowAddCustomer(false)} className="flex-1 h-12 bg-surface-container-highest text-on-surface-variant rounded-xl font-medium">Cancel</button>
+                    <button onClick={handleAddCustomer} disabled={!newName} className="flex-1 h-12 bg-primary text-on-primary rounded-xl font-bold disabled:opacity-50">Add</button>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Customer Context Card */}
             {selectedCustomer && (
               <div className="bg-surface-container-low rounded-xl p-5 space-y-3">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center">
-                    <span className="material-symbols-outlined text-primary text-lg">
-                      person
-                    </span>
+                    <span className="material-symbols-outlined text-primary text-lg">person</span>
                   </div>
                   <div>
-                    <p className="font-body font-semibold text-on-surface">
-                      {selectedCustomer.name}
-                    </p>
+                    <p className="font-body font-semibold text-on-surface">{selectedCustomer.name}</p>
                     <p className="font-label text-xs text-on-surface-variant">
                       {selectedCustomer._count?.sales || 0} previous orders
-                      {selectedCustomer.customerType === "RETURNING" &&
-                        " - Returning"}
+                      {selectedCustomer.customerType === "RETURNING" && " - Returning"}
                     </p>
                   </div>
                 </div>
-
                 {lastSale && (
                   <div className="grid grid-cols-2 gap-3 pt-2 border-t border-outline-variant/10">
                     <div>
-                      <span className="font-label text-[10px] uppercase tracking-wider text-on-surface-variant font-bold block">
-                        Last order
-                      </span>
-                      <span className="font-body text-sm text-on-surface">
-                        {formatNaira(lastSale.totalAmount)}
-                      </span>
+                      <span className="font-label text-[10px] uppercase tracking-wider text-on-surface-variant font-bold block">Last order</span>
+                      <span className="font-body text-sm text-on-surface">{formatNaira(lastSale.totalAmount)}</span>
                     </div>
                     {usualSizes && (
                       <div>
-                        <span className="font-label text-[10px] uppercase tracking-wider text-on-surface-variant font-bold block">
-                          Usual sizes
-                        </span>
-                        <span className="font-body text-sm text-on-surface">
-                          {usualSizes}
-                        </span>
+                        <span className="font-label text-[10px] uppercase tracking-wider text-on-surface-variant font-bold block">Usual sizes</span>
+                        <span className="font-body text-sm text-on-surface">{usualSizes}</span>
                       </div>
                     )}
                     {outstandingBalance > 0 && (
                       <div className="col-span-2">
-                        <span className="font-label text-[10px] uppercase tracking-wider text-error font-bold block">
-                          Outstanding balance
-                        </span>
-                        <span className="font-body text-sm text-error font-semibold">
-                          {formatNaira(outstandingBalance)}
-                        </span>
+                        <span className="font-label text-[10px] uppercase tracking-wider text-error font-bold block">Outstanding balance</span>
+                        <span className="font-body text-sm text-error font-semibold">{formatNaira(outstandingBalance)}</span>
                       </div>
                     )}
                   </div>
@@ -376,55 +301,118 @@ export default function SellPage() {
             </div>
 
             <div className="space-y-4">
-              {BOTTLE_SIZES.map((size) => {
-                const pricing = bottlePrices.find(
-                  (p) => p.bottleSizeMl === size
-                );
+              {SELL_SIZES.map((size) => {
+                const pricing = bottlePrices.find((p) => p.bottleSizeMl === size);
                 const cartItem = cart.get(size);
-                const price =
-                  pricing?.selectedPrice || pricing?.goodPrice || 0;
+                const defaultPrice = pricing?.selectedPrice || pricing?.goodPrice || 0;
+                const currentPrice = cartItem?.unitPrice ?? defaultPrice;
+                const qty = cartItem?.quantity ?? 0;
+                const isKeg = size === 25000;
+                const is10L = size === 10000;
 
                 return (
                   <div
                     key={size}
                     className={`bg-surface-container-low rounded-xl p-4 transition-all ${
-                      (cartItem?.quantity ?? 0) > 0
-                        ? "ring-2 ring-primary/30"
-                        : ""
-                    }`}
+                      qty > 0 ? "ring-2 ring-primary/30" : ""
+                    } ${isKeg ? "bg-tertiary-fixed/30 border border-tertiary/20" : ""}`}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <span className="material-symbols-outlined text-primary text-lg">
-                            local_drink
+                            {isKeg ? "oil_barrel" : is10L ? "water_drop" : "local_drink"}
                           </span>
                           <span className="font-body font-semibold text-on-surface text-lg">
                             {formatBottleSize(size)}
                           </span>
+                          {isKeg && (
+                            <span className="text-[10px] bg-tertiary-fixed text-on-tertiary-fixed px-2 py-0.5 rounded-full font-bold uppercase">
+                              Wholesale
+                            </span>
+                          )}
                         </div>
-                        {price > 0 && (
-                          <p className="font-label text-sm text-on-surface-variant mt-1 ml-7">
-                            {formatNaira(price)} each
-                          </p>
-                        )}
                       </div>
                       <QuantitySelector
-                        value={cartItem?.quantity ?? 0}
-                        onChange={(qty) => updateCartQuantity(size, qty)}
+                        value={qty}
+                        onChange={(q) => updateCartQuantity(size, q)}
                         min={0}
                         max={100}
                         size="sm"
                       />
                     </div>
-                    {(cartItem?.quantity ?? 0) > 0 && price > 0 && (
-                      <div className="mt-2 ml-7 font-label text-sm text-primary font-semibold">
-                        = {formatNaira(price * (cartItem?.quantity ?? 0))}
+
+                    {/* Editable price per unit */}
+                    {qty > 0 && (
+                      <div className="mt-3 ml-7 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-label text-xs text-on-surface-variant font-bold uppercase tracking-wider">
+                            Price each:
+                          </span>
+                          <div className="flex items-center bg-surface-container-lowest ring-1 ring-outline/15 rounded-lg px-3 py-1.5">
+                            <span className="text-primary font-bold mr-1">₦</span>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={currentPrice > 0 ? currentPrice.toLocaleString("en-NG") : ""}
+                              onChange={(e) => {
+                                const raw = e.target.value.replace(/[^0-9]/g, "");
+                                updateCartPrice(size, parseInt(raw, 10) || 0);
+                              }}
+                              placeholder="0"
+                              className="bg-transparent border-none p-0 w-24 font-bold text-on-surface focus:ring-0"
+                            />
+                          </div>
+                        </div>
+                        <p className="font-label text-sm text-primary font-semibold">
+                          = {formatNaira(currentPrice * qty)}
+                        </p>
                       </div>
                     )}
                   </div>
                 );
               })}
+            </div>
+
+            {/* Delivery Method */}
+            <div className="space-y-3">
+              <p className="font-label text-xs font-bold text-outline uppercase tracking-wider">
+                Delivery method
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => { setDeliveryMethod("DELIVER"); }}
+                  className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-xl font-medium transition-all active:scale-95 ${
+                    deliveryMethod === "DELIVER"
+                      ? "bg-primary text-on-primary"
+                      : "bg-surface-container-low text-on-surface-variant"
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-lg">local_shipping</span>
+                  <span className="font-body font-semibold">We deliver</span>
+                </button>
+                <button
+                  onClick={() => { setDeliveryMethod("PICKUP"); setTransportCost(0); }}
+                  className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-xl font-medium transition-all active:scale-95 ${
+                    deliveryMethod === "PICKUP"
+                      ? "bg-primary text-on-primary"
+                      : "bg-surface-container-low text-on-surface-variant"
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-lg">store</span>
+                  <span className="font-body font-semibold">Customer pickup</span>
+                </button>
+              </div>
+
+              {/* Transport cost — only when delivering */}
+              {deliveryMethod === "DELIVER" && (
+                <CurrencyInput
+                  value={transportCost}
+                  onChange={setTransportCost}
+                  label="Transport / delivery cost"
+                  size="md"
+                />
+              )}
             </div>
 
             {/* Running totals card */}
@@ -434,18 +422,19 @@ export default function SellPage() {
                 <div className="relative z-10 space-y-3">
                   <div className="flex justify-between items-end">
                     <div>
-                      <span className="text-xs font-label uppercase tracking-widest text-on-tertiary-fixed-variant block mb-1 font-bold">
-                        Total
-                      </span>
+                      <span className="text-xs font-label uppercase tracking-widest text-on-tertiary-fixed-variant block mb-1 font-bold">Total</span>
                       <div className="text-3xl font-headline font-bold text-on-primary-fixed">
                         {formatNaira(totalAmount)}
                       </div>
+                      {effectiveTransport > 0 && (
+                        <p className="text-xs text-on-tertiary-fixed-variant mt-1">
+                          Products {formatNaira(totalProductAmount)} + Transport {formatNaira(effectiveTransport)}
+                        </p>
+                      )}
                     </div>
                     <div className="text-right">
-                      <span className="text-xs font-label uppercase tracking-widest text-on-tertiary-fixed-variant block mb-1 font-bold">
-                        Profit
-                      </span>
-                      <div className="text-2xl font-headline font-semibold text-on-primary-fixed-variant italic">
+                      <span className="text-xs font-label uppercase tracking-widest text-on-tertiary-fixed-variant block mb-1 font-bold">Profit</span>
+                      <div className={`text-2xl font-headline font-semibold italic ${profit >= 0 ? "text-success" : "text-error"}`}>
                         {formatNaira(profit)}
                       </div>
                     </div>
@@ -455,50 +444,12 @@ export default function SellPage() {
                       Margin: {marginPct.toFixed(1)}%
                     </span>
                     <span className="font-label text-xs text-on-tertiary-fixed-variant">
-                      ({cartItems.reduce((sum, i) => sum + i.quantity, 0)}{" "}
-                      bottles)
+                      ({cartItems.reduce((sum, i) => sum + i.quantity, 0)} items)
                     </span>
                   </div>
                 </div>
               </div>
             )}
-
-            {/* Delivery Method */}
-            <div className="space-y-3">
-              <p className="font-label text-xs font-bold text-outline uppercase tracking-wider">
-                Delivery method
-              </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setDeliveryMethod("DELIVER")}
-                  className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-xl font-medium transition-all active:scale-95 ${
-                    deliveryMethod === "DELIVER"
-                      ? "bg-primary text-on-primary"
-                      : "bg-surface-container-low text-on-surface-variant"
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-lg">
-                    local_shipping
-                  </span>
-                  <span className="font-body font-semibold">We deliver</span>
-                </button>
-                <button
-                  onClick={() => setDeliveryMethod("PICKUP")}
-                  className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-xl font-medium transition-all active:scale-95 ${
-                    deliveryMethod === "PICKUP"
-                      ? "bg-primary text-on-primary"
-                      : "bg-surface-container-low text-on-surface-variant"
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-lg">
-                    store
-                  </span>
-                  <span className="font-body font-semibold">
-                    Customer pickup
-                  </span>
-                </button>
-              </div>
-            </div>
           </section>
         )}
       </main>
@@ -506,26 +457,16 @@ export default function SellPage() {
       {/* Fixed Bottom Bar */}
       <footer className="fixed bottom-0 left-0 w-full bg-surface/90 backdrop-blur-md z-50 border-t border-on-surface/5">
         <div className="max-w-2xl mx-auto p-4">
-          {/* Show totals when on step 2 with items */}
           {step === 2 && cartItems.length > 0 && (
             <div className="flex justify-between items-center mb-3 px-1">
               <div>
-                <span className="font-label text-xs text-on-surface-variant uppercase tracking-wider font-bold block">
-                  Total
-                </span>
-                <span className="font-headline text-2xl font-bold text-on-surface">
-                  {formatNaira(totalAmount)}
-                </span>
+                <span className="font-label text-xs text-on-surface-variant uppercase tracking-wider font-bold block">Total</span>
+                <span className="font-headline text-2xl font-bold text-on-surface">{formatNaira(totalAmount)}</span>
               </div>
               <div className="text-right">
-                <span className="font-label text-xs text-on-surface-variant uppercase tracking-wider font-bold block">
-                  Profit
-                </span>
-                <span className="font-headline text-xl font-semibold text-success italic">
-                  {formatNaira(profit)}{" "}
-                  <span className="text-sm font-normal">
-                    ({marginPct.toFixed(0)}%)
-                  </span>
+                <span className="font-label text-xs text-on-surface-variant uppercase tracking-wider font-bold block">Profit</span>
+                <span className={`font-headline text-xl font-semibold italic ${profit >= 0 ? "text-success" : "text-error"}`}>
+                  {formatNaira(profit)} <span className="text-sm font-normal">({marginPct.toFixed(0)}%)</span>
                 </span>
               </div>
             </div>
@@ -546,13 +487,9 @@ export default function SellPage() {
               disabled={loading || cartItems.length === 0}
               className="w-full h-16 bg-gradient-to-r from-primary to-secondary text-white font-bold text-xl rounded-xl shadow-lg shadow-primary/20 active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              {loading ? (
-                "Saving..."
-              ) : (
+              {loading ? "Saving..." : (
                 <>
-                  <span className="material-symbols-outlined">
-                    check_circle
-                  </span>
+                  <span className="material-symbols-outlined">check_circle</span>
                   Complete Sale
                 </>
               )}

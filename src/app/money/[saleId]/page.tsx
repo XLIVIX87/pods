@@ -125,7 +125,7 @@ export default function MoneyPage({
       });
 
       if (res.ok) {
-        router.push("/sell");
+        router.push("/");
       }
     } catch (error) {
       console.error("Failed to save payment:", error);

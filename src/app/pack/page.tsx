@@ -119,8 +119,8 @@ export default function PackPage() {
   );
 
   const canProceedStep1 = selectedPurchase !== null && kegsToOpen > 0;
-  const canProceedStep2 = bottlesWithQuantity.length > 0;
-  const canFinish = allPriced && bottlesWithQuantity.length > 0;
+  const canProceedStep2 = bottlesWithQuantity.length > 0 && litresPacked <= litresAvailable;
+  const canFinish = allPriced && bottlesWithQuantity.length > 0 && litresPacked <= litresAvailable;
 
   const handleSaveBatch = async () => {
     if (!selectedPurchase || !canFinish) return;

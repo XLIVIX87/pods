@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const navItems = [
-  { href: "/", label: "Home", icon: "home" },
+  { href: "/dashboard", label: "Home", icon: "home" },
   { href: "/buy", label: "Buy", icon: "shopping_basket" },
   { href: "/sell", label: "Sell", icon: "sell" },
   { href: "/customers", label: "Customers", icon: "groups" },
@@ -18,8 +18,8 @@ export default function BottomNav() {
     <nav className="fixed bottom-0 left-0 w-full h-20 flex justify-around items-center px-4 pb-safe bg-surface/80 backdrop-blur-xl border-t border-on-surface/5 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] rounded-t-3xl z-50">
       {navItems.map((item) => {
         const isActive =
-          item.href === "/"
-            ? pathname === "/"
+          item.href === "/dashboard"
+            ? pathname === "/dashboard"
             : pathname.startsWith(item.href);
 
         return (

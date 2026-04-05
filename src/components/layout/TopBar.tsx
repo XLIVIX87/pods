@@ -41,7 +41,7 @@ export default function TopBar({
           </button>
         )}
         {variant === "brand" ? (
-          <Link href="/" className="flex items-center gap-2">
+          <Link href="/dashboard" className="flex items-center gap-2">
             <Image
               src="/logo.svg"
               alt="CYFoods"
@@ -59,10 +59,22 @@ export default function TopBar({
           </h1>
         )}
       </div>
-      <div className="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center overflow-hidden border-2 border-primary-container">
-        <span className="material-symbols-outlined text-primary text-lg">
-          person
-        </span>
+      <div className="flex items-center gap-2">
+        {variant === "page" && (
+          <Link
+            href="/dashboard"
+            className="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center active:scale-95 transition-transform"
+          >
+            <span className="material-symbols-outlined text-primary text-lg">
+              home
+            </span>
+          </Link>
+        )}
+        <div className="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center overflow-hidden border-2 border-primary-container">
+          <span className="material-symbols-outlined text-primary text-lg">
+            person
+          </span>
+        </div>
       </div>
     </header>
   );

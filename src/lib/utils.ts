@@ -83,14 +83,21 @@ export function timeAgo(date: Date | string): string {
 }
 
 /**
- * Bottle sizes available in the system
+ * Bottle sizes for packing (what you pour into)
  */
 export const BOTTLE_SIZES = [750, 1000, 2000, 3000, 4000, 5000] as const;
 
 /**
- * Format bottle size for display
+ * All sellable sizes (bottles + 10L + 25L keg)
+ */
+export const SELL_SIZES = [750, 1000, 2000, 3000, 4000, 5000, 10000, 25000] as const;
+
+/**
+ * Format bottle/container size for display
  */
 export function formatBottleSize(sizeMl: number): string {
+  if (sizeMl === 25000) return "25L Keg";
+  if (sizeMl === 10000) return "10L";
   if (sizeMl >= 1000) return `${sizeMl / 1000}L`;
   return `${sizeMl}ml`;
 }
