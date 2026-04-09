@@ -8,7 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { formatNaira, timeAgo } from "@/lib/utils";
 
 async function getHomeData() {
-  const [kegStock, sales, owedPayments, pendingCheckCount, firstPendingCheck] = await Promise.all([
+  const [kegStock, todaySales, allSalesWithPayments, pendingCheckCount, firstPendingCheck] = await Promise.all([
     prisma.stockLevel.findFirst({
       where: { itemType: "KEG" },
     }),
@@ -22,8 +22,8 @@ async function getHomeData() {
       orderBy: { date: "desc" },
       take: 10,
     }),
-    prisma.payment.findMany({
-      where: { paymentStatus: { in: ["OWED", "PART"] } },
+    prisma.sale.findMany({
+      include: { payments: true },
     }),
     prisma.purchase.count({ where: { status: "PENDING_CHECK" } }),
     prisma.purchase.findFirst({
@@ -33,8 +33,12 @@ async function getHomeData() {
     }),
   ]);
 
-  const todaySalesTotal = sales.reduce((sum, s) => sum + s.totalAmount, 0);
-  const totalOwed = owedPayments.reduce((sum, p) => sum + p.balanceOwed, 0);
+  const todaySalesTotal = todaySales.reduce((sum, s) => sum + s.totalAmount, 0);
+  // Sum of all outstanding balances across every sale
+  const totalOwed = allSalesWithPayments.reduce((sum, s) => {
+    const paid = s.payments.reduce((psum, p) => psum + p.amountPaid, 0);
+    return sum + Math.max(0, s.totalAmount - paid);
+  }, 0);
   const kegCount = kegStock?.quantity ?? 0;
 
   const recentSales = await prisma.sale.findMany({
@@ -81,18 +85,20 @@ export default async function HomePage() {
   };
 
   const activities: Activity[] = [
-    ...data.recentSales.map((s) => ({
-      id: s.id,
-      type: "sale" as const,
-      description: `Sold to ${s.customer.name}`,
-      amount: s.totalAmount,
-      date: s.date,
-      status:
-        s.payments.length > 0
-          ? s.payments[s.payments.length - 1].paymentStatus
-          : "OWED",
-      icon: "arrow_outward",
-    })),
+    ...data.recentSales.map((s) => {
+      const paid = s.payments.reduce((sum, p) => sum + p.amountPaid, 0);
+      const status =
+        paid >= s.totalAmount ? "PAID" : paid > 0 ? "PART" : "OWED";
+      return {
+        id: s.id,
+        type: "sale" as const,
+        description: `Sold to ${s.customer.name}`,
+        amount: s.totalAmount,
+        date: s.date,
+        status,
+        icon: "arrow_outward",
+      };
+    }),
     ...data.recentPurchases.map((p) => ({
       id: p.id,
       type: "purchase" as const,

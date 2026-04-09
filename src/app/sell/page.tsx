@@ -82,6 +82,13 @@ function SellPageInner() {
   const [deliveryMethod, setDeliveryMethod] = useState<"DELIVER" | "PICKUP">("PICKUP");
   const [transportCost, setTransportCost] = useState(0);
 
+  // Stock (for availability warning)
+  const [stockMap, setStockMap] = useState<Map<number, number>>(new Map());
+
+  // Complaint
+  const [hasComplaint, setHasComplaint] = useState(false);
+  const [complaintText, setComplaintText] = useState("");
+
   // Fetch customers, auto-select prefilled one if present
   useEffect(() => {
     fetch("/api/customers")
@@ -98,6 +105,23 @@ function SellPageInner() {
       })
       .catch(console.error);
   }, [prefilledCustomerId]);
+
+  // Fetch stock levels for availability warnings
+  useEffect(() => {
+    fetch("/api/stock")
+      .then((r) => r.json())
+      .then(
+        (items: { itemType: string; sizeMl: number; quantity: number }[]) => {
+          const map = new Map<number, number>();
+          for (const item of items) {
+            // Bottle stock is indexed by sizeMl; 25L keg is itemType=KEG sizeMl=25000
+            map.set(item.sizeMl, item.quantity);
+          }
+          setStockMap(map);
+        }
+      )
+      .catch(console.error);
+  }, []);
 
   // Fetch bottle pricing and init cart with ALL sell sizes
   useEffect(() => {
@@ -187,6 +211,8 @@ function SellPageInner() {
           customerId: selectedCustomer.id,
           deliveryMethod,
           deliveryCost: effectiveTransport,
+          complaint: hasComplaint,
+          complaintText: hasComplaint ? complaintText : null,
           items: cartItems.map((i) => ({
             bottleSizeMl: i.bottleSizeMl,
             quantity: i.quantity,
@@ -337,17 +363,21 @@ function SellPageInner() {
                 const qty = cartItem?.quantity ?? 0;
                 const isKeg = size === 25000;
                 const is10L = size === 10000;
+                const available = stockMap.get(size) ?? 0;
+                const overstock = qty > available;
 
                 return (
                   <div
                     key={size}
                     className={`bg-surface-container-low rounded-xl p-4 transition-all ${
                       qty > 0 ? "ring-2 ring-primary/30" : ""
-                    } ${isKeg ? "bg-tertiary-fixed/30 border border-tertiary/20" : ""}`}
+                    } ${isKeg ? "bg-tertiary-fixed/30 border border-tertiary/20" : ""} ${
+                      overstock ? "ring-2 ring-amber-400" : ""
+                    }`}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex-1">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="material-symbols-outlined text-primary text-lg">
                             {isKeg ? "oil_barrel" : is10L ? "water_drop" : "local_drink"}
                           </span>
@@ -359,13 +389,24 @@ function SellPageInner() {
                               Wholesale
                             </span>
                           )}
+                          <span
+                            className={`text-[10px] font-label font-bold px-2 py-0.5 rounded-full ${
+                              available === 0
+                                ? "bg-surface-container-high text-on-surface-variant/60"
+                                : overstock
+                                  ? "bg-amber-100 text-amber-800"
+                                  : "bg-success-light text-success"
+                            }`}
+                          >
+                            {available} in stock
+                          </span>
                         </div>
                       </div>
                       <QuantitySelector
                         value={qty}
                         onChange={(q) => updateCartQuantity(size, q)}
                         min={0}
-                        max={100}
+                        max={999}
                         size="sm"
                       />
                     </div>
@@ -442,6 +483,63 @@ function SellPageInner() {
                 />
               )}
             </div>
+
+            {/* Complaint section */}
+            <div className="space-y-3">
+              <p className="font-label text-xs font-bold text-outline uppercase tracking-wider">
+                Any complaint?
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setHasComplaint(false);
+                    setComplaintText("");
+                  }}
+                  className={`flex-1 py-3 rounded-xl font-medium transition-all active:scale-95 ${
+                    !hasComplaint
+                      ? "bg-primary text-on-primary"
+                      : "bg-surface-container-low text-on-surface-variant"
+                  }`}
+                >
+                  <span className="font-body font-semibold">None</span>
+                </button>
+                <button
+                  onClick={() => setHasComplaint(true)}
+                  className={`flex-1 py-3 rounded-xl font-medium transition-all active:scale-95 ${
+                    hasComplaint
+                      ? "bg-amber-500 text-white"
+                      : "bg-surface-container-low text-on-surface-variant"
+                  }`}
+                >
+                  <span className="font-body font-semibold">Yes</span>
+                </button>
+              </div>
+              {hasComplaint && (
+                <textarea
+                  value={complaintText}
+                  onChange={(e) => setComplaintText(e.target.value)}
+                  placeholder="Describe the complaint..."
+                  rows={3}
+                  className="w-full p-4 bg-surface-container-lowest border-none ring-1 ring-outline/15 rounded-xl focus:ring-2 focus:ring-primary text-base resize-none"
+                />
+              )}
+            </div>
+
+            {/* Stock warning (when any item exceeds available) */}
+            {cartItems.some((i) => i.quantity > (stockMap.get(i.bottleSizeMl) ?? 0)) && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+                <span className="material-symbols-outlined text-amber-600 shrink-0">
+                  warning
+                </span>
+                <div className="text-sm text-amber-900">
+                  <p className="font-bold">Selling more than stock on hand</p>
+                  <p className="mt-1 opacity-90">
+                    Some items in this sale exceed the current stock level.
+                    Confirm this is intentional before completing.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Running totals card */}
             {cartItems.length > 0 && (

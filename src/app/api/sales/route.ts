@@ -21,6 +21,8 @@ export async function POST(request: NextRequest) {
     customerId,
     deliveryMethod = "PICKUP",
     deliveryCost = 0,
+    complaint = false,
+    complaintText = null,
     items,
   } = body;
 
@@ -32,7 +34,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Calculate totals from items
-  let totalAmount = 0;
+  let productTotal = 0;
   let totalCost = 0;
 
   const saleItems: {
@@ -46,12 +48,13 @@ export async function POST(request: NextRequest) {
     const { bottleSizeMl, quantity, unitPrice, costPerUnit } = item;
     const lineTotal = unitPrice * quantity;
     const lineCost = costPerUnit * quantity;
-    totalAmount += lineTotal;
+    productTotal += lineTotal;
     totalCost += lineCost;
     saleItems.push({ bottleSizeMl, quantity, unitPrice, lineTotal });
   }
 
-  totalCost += deliveryCost;
+  // Customer pays products + delivery; delivery is revenue (not cost)
+  const totalAmount = productTotal + deliveryCost;
   const profit = totalAmount - totalCost;
   const marginPct = totalAmount > 0 ? (profit / totalAmount) * 100 : 0;
 
@@ -64,6 +67,8 @@ export async function POST(request: NextRequest) {
       totalCost,
       profit,
       marginPct,
+      complaint,
+      complaintText,
       items: {
         create: saleItems,
       },
@@ -74,17 +79,18 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  // Update stock levels: decrement bottle stock for each item sold
+  // Update stock levels: KEG for 25L, BOTTLE for everything else
   for (const item of saleItems) {
+    const itemType = item.bottleSizeMl === 25000 ? "KEG" : "BOTTLE";
     await prisma.stockLevel.upsert({
       where: {
-        itemType_sizeMl: { itemType: "BOTTLE", sizeMl: item.bottleSizeMl },
+        itemType_sizeMl: { itemType, sizeMl: item.bottleSizeMl },
       },
       update: {
         quantity: { decrement: item.quantity },
       },
       create: {
-        itemType: "BOTTLE",
+        itemType,
         sizeMl: item.bottleSizeMl,
         quantity: 0,
         totalLitres: 0,

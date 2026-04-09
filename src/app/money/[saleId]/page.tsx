@@ -24,6 +24,9 @@ interface SalePayment {
   amountPaid: number;
   balanceOwed: number;
   paymentStatus: string;
+  paymentMethod: string;
+  paidAt: string;
+  expectedPaymentDate: string | null;
 }
 
 interface Sale {
@@ -70,7 +73,13 @@ export default function MoneyPage({
       .then((r) => r.json())
       .then((data) => {
         setSale(data);
-        setAmountPaid(data.totalAmount);
+        const paidSoFar =
+          data.payments?.reduce(
+            (sum: number, p: SalePayment) => sum + p.amountPaid,
+            0
+          ) ?? 0;
+        // Default to the remaining balance so it's easy to mark "paid in full"
+        setAmountPaid(Math.max(0, data.totalAmount - paidSoFar));
       })
       .catch(console.error)
       .finally(() => setLoadingSale(false));
@@ -204,17 +213,100 @@ export default function MoneyPage({
           )}
         </div>
 
+        {/* Payment History */}
+        {sale.payments.length > 0 && (
+          <div className="space-y-3">
+            <div className="flex items-baseline justify-between">
+              <p className="font-label text-xs font-bold text-outline uppercase tracking-wider">
+                Payment history
+              </p>
+              <span className="font-label text-xs text-on-surface-variant">
+                {sale.payments.length} payment
+                {sale.payments.length > 1 ? "s" : ""}
+              </span>
+            </div>
+            <div className="space-y-2">
+              {[...sale.payments]
+                .sort(
+                  (a, b) =>
+                    new Date(a.paidAt).getTime() -
+                    new Date(b.paidAt).getTime()
+                )
+                .map((p) => (
+                  <div
+                    key={p.id}
+                    className="bg-surface-container-low rounded-xl p-4 flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-success-light flex items-center justify-center">
+                        <span className="material-symbols-outlined text-success text-lg">
+                          {p.paymentMethod === "CASH"
+                            ? "payments"
+                            : p.paymentMethod === "TRANSFER"
+                              ? "swap_horiz"
+                              : "credit_card"}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="font-body font-semibold text-on-surface">
+                          {formatNaira(p.amountPaid)}
+                        </p>
+                        <p className="font-label text-xs text-on-surface-variant">
+                          {p.paymentMethod} &middot; {formatDate(p.paidAt)}
+                        </p>
+                      </div>
+                    </div>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                        p.paymentStatus === "PAID"
+                          ? "bg-success-light text-success"
+                          : p.paymentStatus === "PART"
+                            ? "bg-tertiary-fixed text-on-tertiary-fixed"
+                            : "bg-orange-100 text-orange-800"
+                      }`}
+                    >
+                      {p.paymentStatus}
+                    </span>
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
+
         {/* Payment Input */}
-        <div>
-          <CurrencyInput
-            value={amountPaid}
-            onChange={setAmountPaid}
-            label="Amount paid"
-            size="lg"
-          />
-        </div>
+        {totalOwed > 0 ? (
+          <div className="space-y-1">
+            <p className="font-label text-xs font-bold text-outline uppercase tracking-wider mb-2">
+              Record new payment
+            </p>
+            <CurrencyInput
+              value={amountPaid}
+              onChange={setAmountPaid}
+              label="Amount paid"
+              size="lg"
+            />
+          </div>
+        ) : (
+          <div className="bg-success-light border border-success/20 rounded-xl p-5 flex items-center gap-3">
+            <span
+              className="material-symbols-outlined text-success text-2xl"
+              style={{ fontVariationSettings: "'FILL' 1" }}
+            >
+              check_circle
+            </span>
+            <div>
+              <p className="font-body font-semibold text-success">
+                Sale fully paid
+              </p>
+              <p className="font-label text-xs text-success/70">
+                All balances settled.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Quick Select Buttons */}
+        {totalOwed > 0 && (
         <div className="flex gap-3">
           <button
             onClick={() => handleQuickSelect("full")}
@@ -247,8 +339,10 @@ export default function MoneyPage({
             No payment yet
           </button>
         </div>
+        )}
 
         {/* Payment Method */}
+        {totalOwed > 0 && (
         <div className="space-y-3">
           <p className="font-label text-xs font-bold text-outline uppercase tracking-wider">
             Payment method
@@ -280,6 +374,7 @@ export default function MoneyPage({
             ))}
           </div>
         </div>
+        )}
 
         {/* Balance Owed & Expected Payment Date */}
         {balanceAfterPayment > 0 && (
@@ -380,22 +475,30 @@ export default function MoneyPage({
       {/* Fixed Footer */}
       <footer className="fixed bottom-0 left-0 w-full bg-surface/90 backdrop-blur-md z-50 border-t border-on-surface/5">
         <div className="max-w-2xl mx-auto p-4">
-          <button
-            onClick={handleSavePayment}
-            disabled={saving}
-            className="w-full h-16 bg-gradient-to-r from-primary to-secondary text-white font-bold text-xl rounded-xl shadow-lg shadow-primary/20 active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-          >
-            {saving ? (
-              "Saving..."
-            ) : (
-              <>
-                <span className="material-symbols-outlined">
-                  check_circle
-                </span>
-                Save & Done
-              </>
-            )}
-          </button>
+          {totalOwed > 0 ? (
+            <button
+              onClick={handleSavePayment}
+              disabled={saving}
+              className="w-full h-16 bg-gradient-to-r from-primary to-secondary text-white font-bold text-xl rounded-xl shadow-lg shadow-primary/20 active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {saving ? (
+                "Saving..."
+              ) : (
+                <>
+                  <span className="material-symbols-outlined">check_circle</span>
+                  Save Payment
+                </>
+              )}
+            </button>
+          ) : (
+            <button
+              onClick={() => router.push("/")}
+              className="w-full h-16 bg-surface-container-high text-on-surface font-bold text-xl rounded-xl active:scale-95 transition-all flex items-center justify-center gap-2"
+            >
+              <span className="material-symbols-outlined">home</span>
+              Back to Home
+            </button>
+          )}
         </div>
       </footer>
     </div>
