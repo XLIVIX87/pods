@@ -133,3 +133,43 @@ input[type="number"]::-webkit-outer-spin-button {
 input[type="number"] {
   -moz-appearance: textfield;
 }
+
+/* Print styles for investor dashboard */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 1cm;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  /* Collapse rounded corners, shadows and backdrop blur for cleaner print */
+  .rounded-2xl,
+  .rounded-xl {
+    border-radius: 4px !important;
+  }
+
+  .shadow-sm,
+  .shadow-lg,
+  .shadow-xl {
+    box-shadow: none !important;
+  }
+
+  /* Force grids to single column on print so things don't overflow */
+  .grid {
+    page-break-inside: avoid;
+  }
+
+  /* Hide interactive chrome */
+  nav,
+  footer {
+    display: none !important;
+  }
+}

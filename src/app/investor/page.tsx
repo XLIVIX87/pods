@@ -4,10 +4,33 @@ import Image from "next/image";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { formatNaira, formatBottleSize } from "@/lib/utils";
+import CsvExportButton from "./CsvExportButton";
+import DateRangePicker, { type RangeKey } from "./DateRangePicker";
 
-async function getInvestorData() {
+const RANGE_DAYS: Record<RangeKey, number | null> = {
+  "7d": 7,
+  "30d": 30,
+  "90d": 90,
+  ytd: null,
+  all: null,
+};
+
+function computeStartDate(range: RangeKey): Date {
   const now = new Date();
-  const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000);
+  if (range === "ytd") {
+    return new Date(now.getFullYear(), 0, 1);
+  }
+  if (range === "all") {
+    return new Date(0);
+  }
+  const days = RANGE_DAYS[range] ?? 30;
+  return new Date(now.getTime() - days * 86400000);
+}
+
+async function getInvestorData(range: RangeKey) {
+  const now = new Date();
+  const startDate = computeStartDate(range);
+  const thirtyDaysAgo = startDate;
 
   const [sales, purchases, payments, customers, stockLevels, qualityChecks] =
     await Promise.all([
@@ -147,8 +170,28 @@ async function getInvestorData() {
   };
 }
 
-export default async function InvestorDashboard() {
-  const data = await getInvestorData();
+const RANGE_LABELS: Record<RangeKey, string> = {
+  "7d": "Last 7 days",
+  "30d": "Last 30 days",
+  "90d": "Last 90 days",
+  ytd: "Year to date",
+  all: "All time",
+};
+
+export default async function InvestorDashboard({
+  searchParams,
+}: {
+  searchParams: Promise<{ range?: string }>;
+}) {
+  const params = await searchParams;
+  const range = (params.range as RangeKey) ?? "30d";
+  const validRange: RangeKey =
+    (["7d", "30d", "90d", "ytd", "all"] as RangeKey[]).includes(range)
+      ? range
+      : "30d";
+
+  const data = await getInvestorData(validRange);
+  const rangeLabel = RANGE_LABELS[validRange];
 
   const today = new Date().toLocaleDateString("en-NG", {
     weekday: "long",
@@ -159,7 +202,7 @@ export default async function InvestorDashboard() {
 
   const kpis = [
     {
-      label: "Revenue (30d)",
+      label: `Revenue (${rangeLabel})`,
       value: formatNaira(data.revenue),
       icon: "trending_up",
       color: "bg-primary-container text-on-primary-container",
@@ -223,6 +266,14 @@ export default async function InvestorDashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-6 lg:px-10 py-8 space-y-8">
+        {/* Date Range Picker */}
+        <section className="no-print flex items-center justify-between flex-wrap gap-3">
+          <DateRangePicker selected={validRange} />
+          <p className="text-xs font-label text-on-surface-variant uppercase tracking-wider">
+            Showing: {rangeLabel}
+          </p>
+        </section>
+
         {/* KPI Row */}
         <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {kpis.map((kpi) => (
@@ -345,9 +396,22 @@ export default async function InvestorDashboard() {
         <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Top 5 Customers */}
           <div className="bg-surface-container-lowest rounded-2xl p-6 shadow-sm border border-outline-variant/30">
-            <h3 className="font-headline font-bold italic text-lg text-on-surface mb-4">
-              Top 5 Customers
-            </h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-headline font-bold italic text-lg text-on-surface">
+                Top 5 Customers
+              </h3>
+              <CsvExportButton
+                filename={`top-customers-${validRange}.csv`}
+                headers={["Rank", "Name", "Orders", "Total Spent", "Outstanding"]}
+                rows={data.customerSpend.map((c, i) => [
+                  i + 1,
+                  c.name,
+                  c.orders,
+                  c.totalSpent,
+                  c.outstanding,
+                ])}
+              />
+            </div>
 
             {data.customerSpend.length === 0 ? (
               <p className="text-on-surface-variant text-sm py-4 text-center">
@@ -415,9 +479,28 @@ export default async function InvestorDashboard() {
 
           {/* Supplier Quality Scorecard */}
           <div className="bg-surface-container-lowest rounded-2xl p-6 shadow-sm border border-outline-variant/30">
-            <h3 className="font-headline font-bold italic text-lg text-on-surface mb-4">
-              Supplier Quality Scorecard
-            </h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-headline font-bold italic text-lg text-on-surface">
+                Supplier Quality Scorecard
+              </h3>
+              <CsvExportButton
+                filename={`supplier-quality-${validRange}.csv`}
+                headers={[
+                  "Supplier",
+                  "Total Checks",
+                  "Passed",
+                  "Rejected",
+                  "Pass Rate %",
+                ]}
+                rows={data.supplierQuality.map((s) => [
+                  s.name,
+                  s.total,
+                  s.passed,
+                  s.rejected,
+                  s.total > 0 ? Math.round((s.passed / s.total) * 100) : 0,
+                ])}
+              />
+            </div>
 
             {data.supplierQuality.length === 0 ? (
               <p className="text-on-surface-variant text-sm py-4 text-center">
