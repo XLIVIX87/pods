@@ -211,17 +211,6 @@ export default async function InvestorDashboard() {
               </p>
             </div>
           </div>
-          <nav className="hidden md:flex items-center gap-6 font-label text-sm font-medium">
-            <span className="text-on-primary/90 border-b-2 border-on-primary pb-0.5">
-              Overview
-            </span>
-            <span className="text-on-primary/50 hover:text-on-primary/80 cursor-pointer transition-colors">
-              Financials
-            </span>
-            <span className="text-on-primary/50 hover:text-on-primary/80 cursor-pointer transition-colors">
-              Operations
-            </span>
-          </nav>
           <div className="flex items-center gap-3">
             <span className="text-sm font-label text-on-primary/70 hidden sm:block">
               {today}

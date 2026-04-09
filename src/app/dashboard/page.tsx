@@ -8,7 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { formatNaira, timeAgo } from "@/lib/utils";
 
 async function getHomeData() {
-  const [kegStock, sales, owedPayments] = await Promise.all([
+  const [kegStock, sales, owedPayments, pendingCheckCount, firstPendingCheck] = await Promise.all([
     prisma.stockLevel.findFirst({
       where: { itemType: "KEG" },
     }),
@@ -24,6 +24,12 @@ async function getHomeData() {
     }),
     prisma.payment.findMany({
       where: { paymentStatus: { in: ["OWED", "PART"] } },
+    }),
+    prisma.purchase.count({ where: { status: "PENDING_CHECK" } }),
+    prisma.purchase.findFirst({
+      where: { status: "PENDING_CHECK" },
+      orderBy: { date: "asc" },
+      select: { id: true },
     }),
   ]);
 
@@ -43,7 +49,15 @@ async function getHomeData() {
     take: 5,
   });
 
-  return { kegCount, todaySalesTotal, totalOwed, recentSales, recentPurchases };
+  return {
+    kegCount,
+    todaySalesTotal,
+    totalOwed,
+    recentSales,
+    recentPurchases,
+    pendingCheckCount,
+    firstPendingCheckId: firstPendingCheck?.id,
+  };
 }
 
 export default async function HomePage() {
@@ -137,6 +151,30 @@ export default async function HomePage() {
           />
         </section>
 
+        {/* Pending Quality Check Alert */}
+        {data.pendingCheckCount > 0 && data.firstPendingCheckId && (
+          <Link
+            href={`/check/${data.firstPendingCheckId}`}
+            className="flex items-center gap-4 p-4 rounded-xl bg-tertiary-fixed border border-tertiary/20 active:scale-[0.98] transition-all"
+          >
+            <div className="w-12 h-12 rounded-full bg-tertiary text-on-tertiary flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined">fact_check</span>
+            </div>
+            <div className="flex-1">
+              <p className="font-bold text-on-tertiary-fixed">
+                {data.pendingCheckCount} purchase
+                {data.pendingCheckCount > 1 ? "s" : ""} awaiting quality check
+              </p>
+              <p className="text-xs text-on-tertiary-fixed-variant">
+                Tap to review the oldest one
+              </p>
+            </div>
+            <span className="material-symbols-outlined text-on-tertiary-fixed-variant">
+              arrow_forward
+            </span>
+          </Link>
+        )}
+
         {/* Quick Action Buttons: 2x2 Bento */}
         <section className="grid grid-cols-2 gap-4">
           <Link
@@ -198,44 +236,54 @@ export default async function HomePage() {
               </div>
             )}
 
-            {activities.map((activity) => (
-              <div
-                key={activity.id}
-                className="bg-surface-container-low rounded-xl p-5 flex justify-between items-center transition-all active:bg-surface-container-high"
-              >
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${statusBadge(activity.status)}`}
-                    >
-                      {activity.status === "PENDING_CHECK"
-                        ? "New"
-                        : activity.status}
-                    </span>
-                    <span className="text-[10px] text-on-surface-variant font-medium">
-                      {timeAgo(activity.date)}
+            {activities.map((activity) => {
+              const href =
+                activity.type === "sale"
+                  ? `/money/${activity.id}`
+                  : activity.status === "PENDING_CHECK"
+                    ? `/check/${activity.id}`
+                    : `/purchases/${activity.id}`;
+
+              return (
+                <Link
+                  key={activity.id}
+                  href={href}
+                  className="bg-surface-container-low rounded-xl p-5 flex justify-between items-center transition-all active:bg-surface-container-high active:scale-[0.98]"
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${statusBadge(activity.status)}`}
+                      >
+                        {activity.status === "PENDING_CHECK"
+                          ? "New"
+                          : activity.status}
+                      </span>
+                      <span className="text-[10px] text-on-surface-variant font-medium">
+                        {timeAgo(activity.date)}
+                      </span>
+                    </div>
+                    <p className="text-on-surface font-medium leading-tight">
+                      {activity.description}
+                    </p>
+                    <p className="text-xl font-bold text-on-surface">
+                      {formatNaira(activity.amount)}
+                    </p>
+                  </div>
+                  <div
+                    className={`w-12 h-12 bg-surface-container-highest rounded-full flex items-center justify-center ${
+                      activity.type === "sale"
+                        ? "text-secondary"
+                        : "text-primary"
+                    }`}
+                  >
+                    <span className="material-symbols-outlined">
+                      {activity.icon}
                     </span>
                   </div>
-                  <p className="text-on-surface font-medium leading-tight">
-                    {activity.description}
-                  </p>
-                  <p className="text-xl font-bold text-on-surface">
-                    {formatNaira(activity.amount)}
-                  </p>
-                </div>
-                <div
-                  className={`w-12 h-12 bg-surface-container-highest rounded-full flex items-center justify-center ${
-                    activity.type === "sale"
-                      ? "text-secondary"
-                      : "text-primary"
-                  }`}
-                >
-                  <span className="material-symbols-outlined">
-                    {activity.icon}
-                  </span>
-                </div>
-              </div>
-            ))}
+                </Link>
+              );
+            })}
           </div>
         </section>
       </main>

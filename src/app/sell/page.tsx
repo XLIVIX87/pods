@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import TopBar from "@/components/layout/TopBar";
 import QuantitySelector from "@/components/shared/QuantitySelector";
 import CurrencyInput from "@/components/shared/CurrencyInput";
@@ -42,7 +42,26 @@ interface CartItem {
 }
 
 export default function SellPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-dvh flex items-center justify-center">
+          <span className="material-symbols-outlined animate-spin text-primary text-3xl">
+            progress_activity
+          </span>
+        </div>
+      }
+    >
+      <SellPageInner />
+    </Suspense>
+  );
+}
+
+function SellPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const prefilledCustomerId = searchParams.get("customerId");
+
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
 
@@ -63,13 +82,22 @@ export default function SellPage() {
   const [deliveryMethod, setDeliveryMethod] = useState<"DELIVER" | "PICKUP">("PICKUP");
   const [transportCost, setTransportCost] = useState(0);
 
-  // Fetch customers
+  // Fetch customers, auto-select prefilled one if present
   useEffect(() => {
     fetch("/api/customers")
       .then((r) => r.json())
-      .then(setCustomers)
+      .then((list: Customer[]) => {
+        setCustomers(list);
+        if (prefilledCustomerId) {
+          const match = list.find((c) => c.id === prefilledCustomerId);
+          if (match) {
+            setSelectedCustomer(match);
+            setStep(2);
+          }
+        }
+      })
       .catch(console.error);
-  }, []);
+  }, [prefilledCustomerId]);
 
   // Fetch bottle pricing and init cart with ALL sell sizes
   useEffect(() => {

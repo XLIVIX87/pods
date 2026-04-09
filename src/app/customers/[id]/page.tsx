@@ -374,7 +374,7 @@ export default async function Page({
       {/* Fixed Bottom CTA */}
       <div className="fixed bottom-20 left-0 w-full px-6 pb-2 z-40">
         <Link
-          href={`/sell?customer=${customer.id}`}
+          href={`/sell?customerId=${customer.id}`}
           className="flex items-center justify-center gap-2 bg-primary text-on-primary py-4 rounded-2xl font-label font-bold text-base w-full active:scale-[0.98] transition-transform shadow-lg"
         >
           <span className="material-symbols-outlined text-xl">add_shopping_cart</span>
