@@ -36,6 +36,7 @@ export async function POST(request: NextRequest) {
   const totalLitres = kegs * kegSizeLitres;
   const costPerLitre = totalLitres > 0 ? totalCost / totalLitres : 0;
 
+  // Create purchase as IN_TRANSIT — stock is NOT added until quality check passes
   const purchase = await prisma.purchase.create({
     data: {
       supplierId,
@@ -47,26 +48,9 @@ export async function POST(request: NextRequest) {
       costPerLitre,
       photoUrl,
       waybillPhotoUrl,
-      status: "PENDING_CHECK",
+      status: "IN_TRANSIT",
     },
     include: { supplier: true },
-  });
-
-  // Update keg stock
-  await prisma.stockLevel.upsert({
-    where: { itemType_sizeMl: { itemType: "KEG", sizeMl: 25000 } },
-    update: {
-      quantity: { increment: kegs },
-      totalLitres: { increment: totalLitres },
-      totalValue: { increment: totalCost },
-    },
-    create: {
-      itemType: "KEG",
-      sizeMl: 25000,
-      quantity: kegs,
-      totalLitres,
-      totalValue: totalCost,
-    },
   });
 
   return Response.json(purchase, { status: 201 });

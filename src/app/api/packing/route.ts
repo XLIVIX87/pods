@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     costPerLitre,
     bottles,
   } = body as {
-    purchaseId: string;
+    purchaseId: string | null;
     kegsOpened: number;
     litresAvailable: number;
     litresPacked: number;
@@ -29,30 +29,48 @@ export async function POST(request: NextRequest) {
     bottles: BottlePayload[];
   };
 
-  if (!purchaseId || !kegsOpened || !bottles || bottles.length === 0) {
+  if (!kegsOpened || !bottles || bottles.length === 0) {
     return Response.json(
-      { error: "purchaseId, kegsOpened, and bottles are required" },
+      { error: "kegsOpened and bottles are required" },
       { status: 400 }
     );
   }
 
-  // Verify the purchase exists and is accepted
-  const purchase = await prisma.purchase.findUnique({
-    where: { id: purchaseId },
-  });
-
-  if (!purchase) {
-    return Response.json({ error: "Purchase not found" }, { status: 404 });
+  // If purchaseId is provided, verify it exists and is accepted
+  if (purchaseId) {
+    const purchase = await prisma.purchase.findUnique({
+      where: { id: purchaseId },
+    });
+    if (!purchase) {
+      return Response.json({ error: "Purchase not found" }, { status: 404 });
+    }
+    if (
+      purchase.status !== "ACCEPTED" &&
+      purchase.status !== "ACCEPTED_WITH_NOTE"
+    ) {
+      return Response.json(
+        { error: "Purchase has not been accepted" },
+        { status: 400 }
+      );
+    }
   }
 
-  if (
-    purchase.status !== "ACCEPTED" &&
-    purchase.status !== "ACCEPTED_WITH_NOTE"
-  ) {
-    return Response.json(
-      { error: "Purchase has not been accepted" },
-      { status: 400 }
-    );
+  // Determine cost per keg for stock value decrement
+  // When packing from pooled stock (no purchaseId), use average from stock
+  let costPerKeg = 0;
+  if (purchaseId) {
+    const purchase = await prisma.purchase.findUnique({
+      where: { id: purchaseId },
+    });
+    costPerKeg = purchase?.pricePerKeg ?? 0;
+  } else {
+    const kegStock = await prisma.stockLevel.findFirst({
+      where: { itemType: "KEG", sizeMl: 25000 },
+    });
+    costPerKeg =
+      kegStock && kegStock.quantity > 0
+        ? kegStock.totalValue / kegStock.quantity
+        : 0;
   }
 
   // Create packing session with packed products in a transaction
@@ -60,7 +78,7 @@ export async function POST(request: NextRequest) {
     // 1. Create the PackingSession
     const packingSession = await tx.packingSession.create({
       data: {
-        purchaseId,
+        purchaseId: purchaseId || null,
         kegsOpened,
         litresAvailable,
         litresPacked,
@@ -112,7 +130,7 @@ export async function POST(request: NextRequest) {
       update: {
         quantity: { decrement: kegsOpened },
         totalLitres: { decrement: litresAvailable },
-        totalValue: { decrement: kegsOpened * purchase.pricePerKeg },
+        totalValue: { decrement: kegsOpened * costPerKeg },
       },
       create: {
         itemType: "KEG",
@@ -146,6 +164,23 @@ export async function POST(request: NextRequest) {
         },
       });
     }
+
+    // 5. Update KegAsset: full kegs opened become empty kegs
+    await tx.kegAsset.upsert({
+      where: { id: "singleton" },
+      update: {
+        fullKegs: { decrement: kegsOpened },
+        emptyKegs: { increment: kegsOpened },
+      },
+      create: {
+        id: "singleton",
+        totalKegs: 0,
+        fullKegs: 0,
+        emptyKegs: kegsOpened,
+        kegUnitCost: 0,
+        totalValue: 0,
+      },
+    });
 
     return packingSession;
   });

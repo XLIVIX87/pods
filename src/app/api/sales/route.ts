@@ -80,14 +80,19 @@ export async function POST(request: NextRequest) {
   });
 
   // Update stock levels: KEG for 25L, BOTTLE for everything else
-  for (const item of saleItems) {
+  for (const item of items) {
     const itemType = item.bottleSizeMl === 25000 ? "KEG" : "BOTTLE";
+    const litresForItem = (item.bottleSizeMl / 1000) * item.quantity;
+    const valueForItem = item.costPerUnit * item.quantity;
+
     await prisma.stockLevel.upsert({
       where: {
         itemType_sizeMl: { itemType, sizeMl: item.bottleSizeMl },
       },
       update: {
         quantity: { decrement: item.quantity },
+        totalLitres: { decrement: litresForItem },
+        totalValue: { decrement: valueForItem },
       },
       create: {
         itemType,

@@ -8,7 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { formatNaira, timeAgo } from "@/lib/utils";
 
 async function getHomeData() {
-  const [kegStock, todaySales, allSalesWithPayments, pendingCheckCount, firstPendingCheck] = await Promise.all([
+  const [kegStock, todaySales, allSalesWithPayments, pendingCheckCount, firstPendingCheck, inTransitCount] = await Promise.all([
     prisma.stockLevel.findFirst({
       where: { itemType: "KEG" },
     }),
@@ -31,6 +31,7 @@ async function getHomeData() {
       orderBy: { date: "asc" },
       select: { id: true },
     }),
+    prisma.purchase.count({ where: { status: "IN_TRANSIT" } }),
   ]);
 
   const todaySalesTotal = todaySales.reduce((sum, s) => sum + s.totalAmount, 0);
@@ -61,6 +62,7 @@ async function getHomeData() {
     recentPurchases,
     pendingCheckCount,
     firstPendingCheckId: firstPendingCheck?.id,
+    inTransitCount,
   };
 }
 
@@ -120,6 +122,13 @@ export default async function HomePage() {
         return "bg-tertiary-fixed text-on-tertiary-fixed";
       case "OWED":
         return "bg-orange-100 text-orange-800";
+      case "IN_TRANSIT":
+        return "bg-primary-fixed text-on-primary-fixed";
+      case "ACCEPTED":
+      case "ACCEPTED_WITH_NOTE":
+        return "bg-success-light text-success";
+      case "REJECTED":
+        return "bg-error-container text-on-error-container";
       default:
         return "bg-surface-container-high text-on-surface-variant";
     }
@@ -157,6 +166,29 @@ export default async function HomePage() {
           />
         </section>
 
+        {/* In Transit Alert */}
+        {data.inTransitCount > 0 && (
+          <Link
+            href="/receive"
+            className="flex items-center gap-4 p-4 rounded-xl bg-primary-fixed border border-primary/20 active:scale-[0.98] transition-all"
+          >
+            <div className="w-12 h-12 rounded-full bg-primary text-on-primary flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined">local_shipping</span>
+            </div>
+            <div className="flex-1">
+              <p className="font-bold text-on-primary-fixed">
+                {data.inTransitCount} order{data.inTransitCount > 1 ? "s" : ""} in transit
+              </p>
+              <p className="text-xs text-on-primary-fixed-variant">
+                Tap to mark goods as received
+              </p>
+            </div>
+            <span className="material-symbols-outlined text-on-primary-fixed-variant">
+              arrow_forward
+            </span>
+          </Link>
+        )}
+
         {/* Pending Quality Check Alert */}
         {data.pendingCheckCount > 0 && data.firstPendingCheckId && (
           <Link
@@ -181,11 +213,11 @@ export default async function HomePage() {
           </Link>
         )}
 
-        {/* Quick Action Buttons: 2x2 Bento */}
+        {/* Quick Action Buttons: 2x3 Bento */}
         <section className="grid grid-cols-2 gap-4">
           <Link
             href="/buy"
-            className="h-44 rounded-xl bg-primary-container text-on-primary-fixed flex flex-col items-center justify-center gap-3 transition-transform active:scale-95"
+            className="h-36 rounded-xl bg-primary-container text-on-primary-fixed flex flex-col items-center justify-center gap-3 transition-transform active:scale-95"
           >
             <span className="material-symbols-outlined text-4xl">
               shopping_cart
@@ -193,8 +225,17 @@ export default async function HomePage() {
             <span className="font-bold text-lg">Buy Oil</span>
           </Link>
           <Link
+            href="/receive"
+            className="h-36 rounded-xl bg-tertiary-fixed text-on-tertiary-fixed flex flex-col items-center justify-center gap-3 transition-transform active:scale-95"
+          >
+            <span className="material-symbols-outlined text-4xl">
+              local_shipping
+            </span>
+            <span className="font-bold text-lg">Receive</span>
+          </Link>
+          <Link
             href="/pack"
-            className="h-44 rounded-xl bg-tertiary-container text-on-tertiary-container flex flex-col items-center justify-center gap-3 transition-transform active:scale-95"
+            className="h-36 rounded-xl bg-tertiary-container text-on-tertiary-container flex flex-col items-center justify-center gap-3 transition-transform active:scale-95"
           >
             <span className="material-symbols-outlined text-4xl">
               inventory_2
@@ -203,19 +244,28 @@ export default async function HomePage() {
           </Link>
           <Link
             href="/sell"
-            className="h-44 rounded-xl bg-secondary-container text-on-secondary-container flex flex-col items-center justify-center gap-3 transition-transform active:scale-95"
+            className="h-36 rounded-xl bg-secondary-container text-on-secondary-container flex flex-col items-center justify-center gap-3 transition-transform active:scale-95"
           >
             <span className="material-symbols-outlined text-4xl">sell</span>
             <span className="font-bold text-lg">Sell Oil</span>
           </Link>
           <Link
             href="/stock"
-            className="h-44 rounded-xl bg-surface-container-highest text-on-surface-variant flex flex-col items-center justify-center gap-3 transition-transform active:scale-95"
+            className="h-36 rounded-xl bg-surface-container-highest text-on-surface-variant flex flex-col items-center justify-center gap-3 transition-transform active:scale-95"
           >
             <span className="material-symbols-outlined text-4xl">
               fact_check
             </span>
             <span className="font-bold text-lg">Check Stock</span>
+          </Link>
+          <Link
+            href="/pricing"
+            className="h-36 rounded-xl bg-surface-container-high text-on-surface flex flex-col items-center justify-center gap-3 transition-transform active:scale-95"
+          >
+            <span className="material-symbols-outlined text-4xl">
+              price_change
+            </span>
+            <span className="font-bold text-lg">Pricing</span>
           </Link>
         </section>
 
@@ -246,9 +296,11 @@ export default async function HomePage() {
               const href =
                 activity.type === "sale"
                   ? `/money/${activity.id}`
-                  : activity.status === "PENDING_CHECK"
-                    ? `/check/${activity.id}`
-                    : `/purchases/${activity.id}`;
+                  : activity.status === "IN_TRANSIT"
+                    ? `/receive`
+                    : activity.status === "PENDING_CHECK"
+                      ? `/check/${activity.id}`
+                      : `/purchases/${activity.id}`;
 
               return (
                 <Link

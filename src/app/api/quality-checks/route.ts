@@ -46,18 +46,45 @@ export async function POST(request: NextRequest) {
     data: { status: statusMap[result] || "PENDING_CHECK" },
   });
 
-  // If rejected, reduce stock
-  if (result === "REJECT") {
+  // If accepted, ADD stock now (stock is not added at purchase time)
+  if (result === "ACCEPT" || result === "ACCEPT_WITH_NOTE") {
     const purchase = await prisma.purchase.findUnique({
       where: { id: purchaseId },
     });
     if (purchase) {
-      await prisma.stockLevel.update({
+      const totalLitres = purchase.kegs * purchase.kegSizeLitres;
+
+      // Add kegs to stock
+      await prisma.stockLevel.upsert({
         where: { itemType_sizeMl: { itemType: "KEG", sizeMl: 25000 } },
-        data: {
-          quantity: { decrement: purchase.kegs },
-          totalLitres: { decrement: purchase.kegs * purchase.kegSizeLitres },
-          totalValue: { decrement: purchase.totalCost },
+        update: {
+          quantity: { increment: purchase.kegs },
+          totalLitres: { increment: totalLitres },
+          totalValue: { increment: purchase.totalCost },
+        },
+        create: {
+          itemType: "KEG",
+          sizeMl: 25000,
+          quantity: purchase.kegs,
+          totalLitres,
+          totalValue: purchase.totalCost,
+        },
+      });
+
+      // Track physical keg containers
+      await prisma.kegAsset.upsert({
+        where: { id: "singleton" },
+        update: {
+          totalKegs: { increment: purchase.kegs },
+          fullKegs: { increment: purchase.kegs },
+        },
+        create: {
+          id: "singleton",
+          totalKegs: purchase.kegs,
+          fullKegs: purchase.kegs,
+          emptyKegs: 0,
+          kegUnitCost: purchase.pricePerKeg,
+          totalValue: purchase.kegs * purchase.pricePerKeg,
         },
       });
     }

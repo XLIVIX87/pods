@@ -11,6 +11,7 @@ datasource db {
 enum UserRole {
   OPERATOR
   INVESTOR
+  ADMIN
 }
 
 model User {
@@ -45,6 +46,7 @@ model Supplier {
 // ============ PHASE 1: BUY ============
 
 enum PurchaseStatus {
+  IN_TRANSIT
   PENDING_CHECK
   ACCEPTED
   REJECTED
@@ -65,7 +67,8 @@ model Purchase {
   waybillPhotoUrl String?
   gpsLat          Float?
   gpsLng          Float?
-  status          PurchaseStatus @default(PENDING_CHECK)
+  status          PurchaseStatus @default(IN_TRANSIT)
+  receivedAt      DateTime?
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
@@ -106,14 +109,14 @@ model QualityCheck {
 
 model PackingSession {
   id               String   @id @default(cuid())
-  purchaseId       String
+  purchaseId       String?
   kegsOpened       Int
   litresAvailable  Float
   litresPacked     Float    @default(0)
   litresDifference Float    @default(0)
   createdAt        DateTime @default(now())
 
-  purchase       Purchase       @relation(fields: [purchaseId], references: [id])
+  purchase       Purchase?      @relation(fields: [purchaseId], references: [id])
   packedProducts PackedProduct[]
 
   @@map("packing_sessions")
@@ -262,4 +265,18 @@ model Payment {
   sale Sale @relation(fields: [saleId], references: [id])
 
   @@map("payments")
+}
+
+// ============ KEG ASSETS ============
+
+model KegAsset {
+  id          String   @id @default("singleton")
+  totalKegs   Int      @default(0)
+  fullKegs    Int      @default(0)
+  emptyKegs   Int      @default(0)
+  kegUnitCost Float    @default(0)
+  totalValue  Float    @default(0)
+  lastUpdated DateTime @updatedAt
+
+  @@map("keg_assets")
 }

@@ -87,8 +87,7 @@ export default function BuyPage() {
       });
 
       if (res.ok) {
-        const purchase = await res.json();
-        router.push(`/check/${purchase.id}`);
+        router.push("/dashboard");
       }
     } catch (error) {
       console.error("Failed to save purchase:", error);

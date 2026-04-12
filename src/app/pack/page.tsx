@@ -15,15 +15,12 @@ import {
 import { calculatePriceTiers } from "@/lib/pricing";
 import type { PriceTier } from "@/lib/pricing";
 
-interface PurchaseOption {
-  id: string;
-  kegs: number;
-  kegSizeLitres: number;
-  costPerLitre: number;
-  totalCost: number;
-  date: string;
-  status: string;
-  supplier: { name: string };
+interface StockItem {
+  itemType: string;
+  sizeMl: number;
+  quantity: number;
+  totalLitres: number;
+  totalValue: number;
 }
 
 interface BottleEntry {
@@ -39,10 +36,8 @@ export default function PackPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // Step 1: Source purchase
-  const [purchases, setPurchases] = useState<PurchaseOption[]>([]);
-  const [selectedPurchase, setSelectedPurchase] =
-    useState<PurchaseOption | null>(null);
+  // Step 1: Kegs from pooled stock
+  const [kegStock, setKegStock] = useState<StockItem | null>(null);
   const [kegsToOpen, setKegsToOpen] = useState(1);
 
   // Step 2: Bottle quantities
@@ -55,21 +50,26 @@ export default function PackPage() {
     }))
   );
 
-  // Fetch accepted purchases
+  // Fetch keg stock
   useEffect(() => {
     setLoading(true);
-    fetch("/api/purchases")
+    fetch("/api/stock")
       .then((r) => r.json())
-      .then((data: PurchaseOption[]) => {
-        const accepted = data.filter(
-          (p: PurchaseOption & { status: string }) =>
-            p.status === "ACCEPTED" || p.status === "ACCEPTED_WITH_NOTE"
+      .then((data: StockItem[]) => {
+        const keg = data.find(
+          (s) => s.itemType === "KEG" && s.sizeMl === 25000
         );
-        setPurchases(accepted);
+        setKegStock(keg || null);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
+
+  const availableKegs = kegStock?.quantity ?? 0;
+  const averageCostPerLitre =
+    kegStock && kegStock.totalLitres > 0
+      ? kegStock.totalValue / kegStock.totalLitres
+      : 0;
 
   // Litres calculations
   const litresAvailable = kegsToOpen * KEG_SIZE_LITRES;
@@ -80,27 +80,22 @@ export default function PackPage() {
     );
   }, [bottles]);
   const litresDifference = litresAvailable - litresPacked;
-  const packingPercentage = litresAvailable > 0
-    ? Math.min(100, (litresPacked / litresAvailable) * 100)
-    : 0;
+  const packingPercentage =
+    litresAvailable > 0
+      ? Math.min(100, (litresPacked / litresAvailable) * 100)
+      : 0;
 
-  // Price tiers per bottle size
+  // Price tiers per bottle size — based on average cost from pooled stock
   const priceTiers = useMemo(() => {
-    if (!selectedPurchase) return {};
+    if (averageCostPerLitre <= 0) return {};
     const tiers: Record<number, ReturnType<typeof calculatePriceTiers>> = {};
     for (const size of BOTTLE_SIZES) {
-      tiers[size] = calculatePriceTiers(
-        selectedPurchase.costPerLitre,
-        size
-      );
+      tiers[size] = calculatePriceTiers(averageCostPerLitre, size);
     }
     return tiers;
-  }, [selectedPurchase]);
+  }, [averageCostPerLitre]);
 
-  const updateBottle = (
-    sizeMl: number,
-    updates: Partial<BottleEntry>
-  ) => {
+  const updateBottle = (sizeMl: number, updates: Partial<BottleEntry>) => {
     setBottles((prev) =>
       prev.map((b) => (b.sizeMl === sizeMl ? { ...b, ...updates } : b))
     );
@@ -114,16 +109,18 @@ export default function PackPage() {
   };
 
   const bottlesWithQuantity = bottles.filter((b) => b.quantity > 0);
-  const allPriced = bottlesWithQuantity.every(
-    (b) => b.selectedTier !== null
-  );
+  const allPriced = bottlesWithQuantity.every((b) => b.selectedTier !== null);
 
-  const canProceedStep1 = selectedPurchase !== null && kegsToOpen > 0;
-  const canProceedStep2 = bottlesWithQuantity.length > 0 && litresPacked <= litresAvailable;
-  const canFinish = allPriced && bottlesWithQuantity.length > 0 && litresPacked <= litresAvailable;
+  const canProceedStep1 = availableKegs > 0 && kegsToOpen > 0;
+  const canProceedStep2 =
+    bottlesWithQuantity.length > 0 && litresPacked <= litresAvailable;
+  const canFinish =
+    allPriced &&
+    bottlesWithQuantity.length > 0 &&
+    litresPacked <= litresAvailable;
 
   const handleSaveBatch = async () => {
-    if (!selectedPurchase || !canFinish) return;
+    if (!canFinish) return;
     setSaving(true);
 
     try {
@@ -131,17 +128,16 @@ export default function PackPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          purchaseId: selectedPurchase.id,
+          purchaseId: null,
           kegsOpened: kegsToOpen,
           litresAvailable,
           litresPacked,
           litresDifference,
-          costPerLitre: selectedPurchase.costPerLitre,
+          costPerLitre: averageCostPerLitre,
           bottles: bottlesWithQuantity.map((b) => ({
             bottleSizeMl: b.sizeMl,
             quantity: b.quantity,
-            costPerUnit:
-              priceTiers[b.sizeMl]?.totalCostPerUnit ?? 0,
+            costPerUnit: priceTiers[b.sizeMl]?.totalCostPerUnit ?? 0,
             selectedPriceTier: b.selectedTier,
             sellPrice: b.sellPrice,
           })),
@@ -165,11 +161,11 @@ export default function PackPage() {
       <main className="flex-grow px-4 pt-4 max-w-2xl mx-auto w-full">
         <StepperProgress currentStep={step} totalSteps={3} />
 
-        {/* ── Step 1: Select Purchase & Kegs ── */}
+        {/* Step 1: Select kegs from pooled stock */}
         {step === 1 && (
           <section className="space-y-6">
             <h2 className="font-headline text-3xl font-semibold text-on-surface leading-tight">
-              Which batch are you packing?
+              How many kegs to open?
             </h2>
 
             {loading ? (
@@ -178,93 +174,66 @@ export default function PackPage() {
                   progress_activity
                 </span>
               </div>
-            ) : purchases.length === 0 ? (
+            ) : availableKegs === 0 ? (
               <div className="bg-surface-container-low p-8 rounded-xl text-center space-y-3">
                 <span className="material-symbols-outlined text-4xl text-outline">
                   inventory_2
                 </span>
                 <p className="text-on-surface-variant font-medium">
-                  No accepted purchases with kegs available
+                  No kegs in stock
                 </p>
                 <p className="text-sm text-on-surface-variant/70">
                   Buy oil and pass quality checks first
                 </p>
               </div>
             ) : (
-              <div className="space-y-3">
-                <p className="font-label text-xs font-bold text-outline uppercase tracking-wider">
-                  Select a purchase
-                </p>
-                {purchases.map((p) => {
-                  const isSelected = selectedPurchase?.id === p.id;
-                  return (
-                    <button
-                      key={p.id}
-                      onClick={() => setSelectedPurchase(p)}
-                      className={`w-full text-left p-5 rounded-xl transition-all active:scale-[0.98] ${
-                        isSelected
-                          ? "bg-primary-fixed border-2 border-primary shadow-lg shadow-primary/10"
-                          : "bg-surface-container-low border-2 border-transparent hover:border-outline/20"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div
-                            className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                              isSelected
-                                ? "bg-primary text-on-primary"
-                                : "bg-surface-container-highest text-primary"
-                            }`}
-                          >
-                            <span className="material-symbols-outlined text-xl">
-                              local_shipping
-                            </span>
-                          </div>
-                          <div>
-                            <p className="font-bold text-on-surface">
-                              {p.supplier.name}
-                            </p>
-                            <p className="text-xs text-on-surface-variant">
-                              {p.kegs} kegs &middot;{" "}
-                              {formatNaira(Math.round(p.costPerLitre))}/L
-                            </p>
-                          </div>
-                        </div>
-                        {isSelected ? (
-                          <span
-                            className="material-symbols-outlined text-primary"
-                            style={{
-                              fontVariationSettings: "'FILL' 1",
-                            }}
-                          >
-                            check_circle
-                          </span>
-                        ) : (
-                          <span className="material-symbols-outlined text-on-surface-variant/20">
-                            radio_button_unchecked
-                          </span>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            {selectedPurchase && (
-              <div className="space-y-4 pt-4">
-                <p className="font-label text-xs font-bold text-outline uppercase tracking-wider text-center">
-                  How many kegs to open?
-                </p>
-                <div className="bg-surface-container-low p-4 rounded-xl flex justify-center">
-                  <QuantitySelector
-                    value={kegsToOpen}
-                    onChange={setKegsToOpen}
-                    min={1}
-                    max={selectedPurchase.kegs}
-                  />
+              <div className="space-y-6">
+                {/* Stock Summary */}
+                <div className="bg-primary-fixed rounded-xl p-5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="material-symbols-outlined text-on-primary-fixed text-lg">
+                      oil_barrel
+                    </span>
+                    <span className="font-label text-xs font-bold text-on-primary-fixed-variant uppercase tracking-widest">
+                      Available Stock
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-3xl font-headline font-bold text-on-primary-fixed">
+                        {availableKegs}
+                      </p>
+                      <p className="text-sm text-on-primary-fixed-variant">
+                        kegs ({availableKegs * KEG_SIZE_LITRES}L)
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-3xl font-headline font-bold text-on-primary-fixed">
+                        {formatNaira(Math.round(averageCostPerLitre))}
+                      </p>
+                      <p className="text-sm text-on-primary-fixed-variant">
+                        avg cost per litre
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
+                {/* Keg Selector */}
+                <div className="space-y-4">
+                  <p className="font-label text-xs font-bold text-outline uppercase tracking-wider text-center">
+                    Kegs to open
+                  </p>
+                  <div className="bg-surface-container-low p-4 rounded-xl flex justify-center">
+                    <QuantitySelector
+                      value={kegsToOpen}
+                      onChange={setKegsToOpen}
+                      min={1}
+                      max={availableKegs}
+                    />
+                  </div>
+                </div>
+
+                {/* Litres available */}
                 <div className="bg-tertiary-fixed rounded-xl p-5">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="material-symbols-outlined text-on-tertiary-fixed text-lg">
@@ -283,7 +252,7 @@ export default function PackPage() {
           </section>
         )}
 
-        {/* ── Step 2: Bottle Grid ── */}
+        {/* Step 2: Bottle Grid */}
         {step === 2 && (
           <section className="space-y-6">
             <div className="text-center mb-2">
@@ -315,9 +284,7 @@ export default function PackPage() {
                     </div>
                     <QuantitySelector
                       value={bottle.quantity}
-                      onChange={(v) =>
-                        updateBottle(size, { quantity: v })
-                      }
+                      onChange={(v) => updateBottle(size, { quantity: v })}
                       min={0}
                       max={999}
                       size="sm"
@@ -390,8 +357,8 @@ export default function PackPage() {
                     warning
                   </span>
                   <span className="text-sm font-medium text-error">
-                    You have packed more litres than available. Please
-                    check your quantities.
+                    You have packed more litres than available. Please check
+                    your quantities.
                   </span>
                 </div>
               )}
@@ -399,7 +366,7 @@ export default function PackPage() {
           </section>
         )}
 
-        {/* ── Step 3: Smart Pricing ── */}
+        {/* Step 3: Smart Pricing */}
         {step === 3 && (
           <section className="space-y-6">
             <div className="text-center mb-2">
@@ -505,9 +472,7 @@ export default function PackPage() {
               className="w-full h-16 bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold text-xl rounded-xl shadow-lg active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
             >
               Next Step
-              <span className="material-symbols-outlined">
-                arrow_forward
-              </span>
+              <span className="material-symbols-outlined">arrow_forward</span>
             </button>
           ) : (
             <button

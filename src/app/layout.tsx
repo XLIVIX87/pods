@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Newsreader, Work_Sans } from "next/font/google";
+import AuthProvider from "@/components/providers/AuthProvider";
 import "./globals.css";
 
 const newsreader = Newsreader({
@@ -48,7 +49,7 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-dvh bg-surface text-on-surface font-body selection:bg-tertiary-fixed">
-        {children}
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );
