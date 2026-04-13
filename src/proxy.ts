@@ -18,9 +18,11 @@ export async function proxy(request: NextRequest) {
   }
 
   // Check for auth token
+  const isSecure = request.url.startsWith("https://");
   const token = await getToken({
     req: request,
     secret: process.env.NEXTAUTH_SECRET,
+    secureCookie: isSecure,
   });
 
   if (!token) {
