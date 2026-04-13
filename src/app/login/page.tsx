@@ -28,14 +28,18 @@ export default function LoginPage() {
 
       if (result?.error) {
         setError("Invalid phone/email or password");
+        setLoading(false);
+      } else if (result?.ok) {
+        // Successful login — redirect to dashboard
+        // Use window.location for a full page reload to pick up the new session cookie
+        window.location.href = "/dashboard";
       } else {
-        // Redirect to landing page which will route by role
-        router.push("/");
-        router.refresh();
+        setError("Invalid phone/email or password");
+        setLoading(false);
       }
-    } catch {
+    } catch (err) {
+      console.error("Login error:", err);
       setError("Something went wrong. Please try again.");
-    } finally {
       setLoading(false);
     }
   };

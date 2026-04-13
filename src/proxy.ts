@@ -2,19 +2,26 @@ import { getToken } from "next-auth/jwt";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
+const publicPaths = ["/login", "/api/auth"];
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Allow public paths
-  if (
-    pathname.startsWith("/login") ||
-    pathname.startsWith("/api/auth")
-  ) {
+  if (publicPaths.some((p) => pathname.startsWith(p))) {
+    return NextResponse.next();
+  }
+
+  // Allow all API routes (they should handle their own auth if needed)
+  if (pathname.startsWith("/api/")) {
     return NextResponse.next();
   }
 
   // Check for auth token
-  const token = await getToken({ req: request });
+  const token = await getToken({
+    req: request,
+    secret: process.env.NEXTAUTH_SECRET,
+  });
 
   if (!token) {
     const loginUrl = new URL("/login", request.url);
@@ -48,6 +55,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!api/(?!auth)|_next/static|_next/image|.*\\.png$|.*\\.svg$|manifest\\.json|favicon\\.ico).*)",
+    "/((?!_next/static|_next/image|.*\\.png$|.*\\.svg$|manifest\\.json|favicon\\.ico).*)",
   ],
 };
