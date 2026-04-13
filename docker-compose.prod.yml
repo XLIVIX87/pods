@@ -24,6 +24,7 @@ services:
       DATABASE_URL: "postgresql://pods:${POSTGRES_PASSWORD:-pods_secure_password_change_me}@db:5432/pods_db?schema=public"
       NEXTAUTH_URL: "https://pods.srv1528810.hstgr.cloud"
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-change-me-in-production}
+      AUTH_TRUST_HOST: "true"
       NEXT_PUBLIC_APP_URL: "https://pods.srv1528810.hstgr.cloud"
     depends_on:
       - db
