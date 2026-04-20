@@ -38,9 +38,43 @@ model Supplier {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  purchases Purchase[]
+  purchases   Purchase[]
+  priceQuotes SupplierPriceQuote[]
 
   @@map("suppliers")
+}
+
+// ============ PRICE TRACKING ============
+
+model SupplierPriceQuote {
+  id            String   @id @default(cuid())
+  supplierId    String
+  pricePerKeg   Float
+  kegSizeLitres Float    @default(25)
+  pricePerLitre Float
+  note          String?
+  recordedAt    DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  supplier Supplier @relation(fields: [supplierId], references: [id])
+
+  @@index([recordedAt])
+  @@map("supplier_price_quotes")
+}
+
+model MarketPrice {
+  id            String   @id @default(cuid())
+  sourceLabel   String
+  bottleSizeMl  Int
+  pricePerUnit  Float
+  pricePerLitre Float
+  note          String?
+  recordedAt    DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  @@index([recordedAt])
+  @@index([bottleSizeMl])
+  @@map("market_prices")
 }
 
 // ============ PHASE 1: BUY ============

@@ -4,6 +4,7 @@ import Link from "next/link";
 import BottomNav from "@/components/layout/BottomNav";
 import TopBar from "@/components/layout/TopBar";
 import StatCard from "@/components/shared/StatCard";
+import PricePulse from "@/components/dashboard/PricePulse";
 import { prisma } from "@/lib/prisma";
 import { formatNaira, timeAgo } from "@/lib/utils";
 
@@ -165,6 +166,9 @@ export default async function HomePage() {
             variant="green"
           />
         </section>
+
+        {/* Price Pulse — supplier, market & recommended sell prices */}
+        <PricePulse />
 
         {/* In Transit Alert */}
         {data.inTransitCount > 0 && (
