@@ -142,9 +142,10 @@ export async function POST(request: NextRequest) {
     });
 
     // 4. Increment bottle stock for each size
+    //    Stock value represents COST BASIS, not revenue — use costPerUnit, not sellPrice.
     for (const b of bottles) {
       const litresForSize = (b.bottleSizeMl / 1000) * b.quantity;
-      const valueForSize = b.sellPrice * b.quantity;
+      const valueForSize = b.costPerUnit * b.quantity;
 
       await tx.stockLevel.upsert({
         where: {

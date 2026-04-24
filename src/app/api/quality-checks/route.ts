@@ -21,8 +21,12 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const qualityCheck = await prisma.qualityCheck.create({
-    data: {
+  // Upsert keyed on purchaseId so re-checking the same purchase updates the
+  // existing row instead of creating a duplicate. The @unique constraint on
+  // QualityCheck.purchaseId is what makes this safe.
+  const qualityCheck = await prisma.qualityCheck.upsert({
+    where: { purchaseId },
+    create: {
       purchaseId,
       colourPass,
       smellPass,
@@ -31,6 +35,16 @@ export async function POST(request: NextRequest) {
       result,
       note,
       photoUrl,
+    },
+    update: {
+      colourPass,
+      smellPass,
+      tastePass,
+      waterPass,
+      result,
+      note,
+      photoUrl,
+      checkedAt: new Date(),
     },
   });
 

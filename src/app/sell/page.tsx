@@ -88,6 +88,7 @@ function SellPageInner() {
   // Complaint
   const [hasComplaint, setHasComplaint] = useState(false);
   const [complaintText, setComplaintText] = useState("");
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Fetch customers, auto-select prefilled one if present
   useEffect(() => {
@@ -202,6 +203,7 @@ function SellPageInner() {
   const handleCompleteSale = async () => {
     if (!selectedCustomer || cartItems.length === 0) return;
     setLoading(true);
+    setSaveError(null);
 
     try {
       const res = await fetch("/api/sales", {
@@ -225,9 +227,28 @@ function SellPageInner() {
       if (res.ok) {
         const sale = await res.json();
         router.push(`/money/${sale.id}`);
+        return;
       }
+
+      // Server returned a non-OK — extract a human-readable message
+      let message = "Couldn't save the sale. Please try again.";
+      try {
+        const body = await res.json();
+        if (body?.error === "INSUFFICIENT_STOCK") {
+          const sizeLabel = formatBottleSize(body.bottleSizeMl);
+          message = `Not enough ${sizeLabel} in stock. Only ${body.available} available, you tried to sell ${body.requested}.`;
+        } else if (body?.message) {
+          message = body.message;
+        } else if (body?.error) {
+          message = body.error;
+        }
+      } catch {
+        /* ignore json parse errors */
+      }
+      setSaveError(message);
     } catch (error) {
       console.error("Failed to save sale:", error);
+      setSaveError("Network error — check your connection and try again.");
     } finally {
       setLoading(false);
     }
@@ -608,18 +629,31 @@ function SellPageInner() {
               <span className="material-symbols-outlined">arrow_forward</span>
             </button>
           ) : (
-            <button
-              onClick={handleCompleteSale}
-              disabled={loading || cartItems.length === 0}
-              className="w-full h-16 bg-gradient-to-r from-primary to-secondary text-white font-bold text-xl rounded-xl shadow-lg shadow-primary/20 active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              {loading ? "Saving..." : (
-                <>
-                  <span className="material-symbols-outlined">check_circle</span>
-                  Complete Sale
-                </>
+            <>
+              {saveError && (
+                <div
+                  role="alert"
+                  className="mb-3 flex items-start gap-3 rounded-xl bg-error-container text-on-error-container p-4"
+                >
+                  <span className="material-symbols-outlined shrink-0">
+                    error
+                  </span>
+                  <p className="text-sm font-medium">{saveError}</p>
+                </div>
               )}
-            </button>
+              <button
+                onClick={handleCompleteSale}
+                disabled={loading || cartItems.length === 0}
+                className="w-full h-16 bg-gradient-to-r from-primary to-secondary text-white font-bold text-xl rounded-xl shadow-lg shadow-primary/20 active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {loading ? "Saving..." : (
+                  <>
+                    <span className="material-symbols-outlined">check_circle</span>
+                    Complete Sale
+                  </>
+                )}
+              </button>
+            </>
           )}
 
           {step > 1 && (
