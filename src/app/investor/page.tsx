@@ -35,7 +35,7 @@ async function getInvestorData(range: RangeKey) {
   const [sales, purchases, payments, customers, stockLevels, qualityChecks] =
     await Promise.all([
       prisma.sale.findMany({
-        where: { date: { gte: thirtyDaysAgo } },
+        where: { voidedAt: null, date: { gte: thirtyDaysAgo } },
         include: { items: true, payments: true, customer: true },
         orderBy: { date: "desc" },
       }),
@@ -49,7 +49,10 @@ async function getInvestorData(range: RangeKey) {
       }),
       prisma.customer.findMany({
         include: {
-          sales: { include: { payments: true } },
+          sales: {
+            where: { voidedAt: null },
+            include: { payments: true },
+          },
         },
       }),
       prisma.stockLevel.findMany(),

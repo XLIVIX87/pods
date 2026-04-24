@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
     orderBy: { updatedAt: "desc" },
     include: {
       sales: {
+        where: { voidedAt: null },
         orderBy: { date: "desc" },
         take: 1,
         include: {

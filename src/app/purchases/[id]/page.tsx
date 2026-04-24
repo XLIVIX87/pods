@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import BottomNav from "@/components/layout/BottomNav";
 import TopBar from "@/components/layout/TopBar";
+import PurchaseActions from "./PurchaseActions";
 import { prisma } from "@/lib/prisma";
 import { formatNaira, formatDate, formatBottleSize } from "@/lib/utils";
 
@@ -214,6 +215,18 @@ export default async function PurchaseDetailPage({
             </p>
           )}
         </section>
+
+        <PurchaseActions
+          purchaseId={purchase.id}
+          status={purchase.status}
+          hasPackingSessions={purchase.packingSessions.length > 0}
+          current={{
+            kegs: purchase.kegs,
+            kegSizeLitres: purchase.kegSizeLitres,
+            pricePerKeg: purchase.pricePerKeg,
+            transportCost: purchase.transportCost,
+          }}
+        />
 
         {/* Packing sessions */}
         {purchase.packingSessions.length > 0 && (

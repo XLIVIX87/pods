@@ -8,6 +8,7 @@ import { formatNaira, timeAgo } from "@/lib/utils";
 
 export default async function MoneyPage() {
   const sales = await prisma.sale.findMany({
+    where: { voidedAt: null },
     include: {
       customer: true,
       payments: true,

@@ -51,6 +51,11 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
+  // /admin/* is ADMIN only
+  if (pathname.startsWith("/admin") && role !== "ADMIN") {
+    return NextResponse.redirect(new URL("/dashboard", request.url));
+  }
+
   // ADMIN can access everything
   return NextResponse.next();
 }

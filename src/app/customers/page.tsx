@@ -9,6 +9,7 @@ async function getCustomersData(): Promise<CustomerCard[]> {
   const customers = await prisma.customer.findMany({
     include: {
       sales: {
+        where: { voidedAt: null },
         include: { payments: true, items: true },
         orderBy: { date: "desc" },
       },

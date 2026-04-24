@@ -59,6 +59,56 @@ export default function MoneyPage({
   const [sale, setSale] = useState<Sale | null>(null);
   const [loadingSale, setLoadingSale] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [voiding, setVoiding] = useState(false);
+  const [voidError, setVoidError] = useState<string | null>(null);
+
+  const handleVoidSale = async () => {
+    const reason = window.prompt(
+      "Why are you voiding this sale? (e.g. entered wrong amount, wrong customer)"
+    );
+    if (reason === null) return; // cancelled
+    if (!reason.trim()) {
+      setVoidError("A reason is required to void a sale.");
+      return;
+    }
+    setVoiding(true);
+    setVoidError(null);
+    try {
+      const res = await fetch(`/api/sales/${saleId}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: reason.trim() }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || "Failed to void sale");
+      }
+      router.push("/money");
+    } catch (err) {
+      setVoidError(err instanceof Error ? err.message : "Failed");
+      setVoiding(false);
+    }
+  };
+
+  const handleDeletePayment = async (paymentId: string) => {
+    const reason = window.prompt(
+      "Why are you removing this payment? (optional)"
+    );
+    if (reason === null) return;
+    try {
+      const res = await fetch(`/api/payments/${paymentId}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: reason.trim() || null }),
+      });
+      if (!res.ok) throw new Error("Failed to delete");
+      // Refresh the sale
+      const fresh = await fetch(`/api/sales/${saleId}`).then((r) => r.json());
+      setSale(fresh);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete payment");
+    }
+  };
 
   // Payment form
   const [amountPaid, setAmountPaid] = useState(0);
@@ -256,17 +306,29 @@ export default function MoneyPage({
                         </p>
                       </div>
                     </div>
-                    <span
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                        p.paymentStatus === "PAID"
-                          ? "bg-success-light text-success"
-                          : p.paymentStatus === "PART"
-                            ? "bg-tertiary-fixed text-on-tertiary-fixed"
-                            : "bg-orange-100 text-orange-800"
-                      }`}
-                    >
-                      {p.paymentStatus}
-                    </span>
+                    <div className="flex items-center gap-1">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                          p.paymentStatus === "PAID"
+                            ? "bg-success-light text-success"
+                            : p.paymentStatus === "PART"
+                              ? "bg-tertiary-fixed text-on-tertiary-fixed"
+                              : "bg-orange-100 text-orange-800"
+                        }`}
+                      >
+                        {p.paymentStatus}
+                      </span>
+                      <button
+                        onClick={() => handleDeletePayment(p.id)}
+                        className="p-1 text-on-surface-variant active:bg-surface-container-high rounded"
+                        aria-label="Remove payment"
+                        type="button"
+                      >
+                        <span className="material-symbols-outlined text-base">
+                          delete_outline
+                        </span>
+                      </button>
+                    </div>
                   </div>
                 ))}
             </div>
@@ -469,6 +531,32 @@ export default function MoneyPage({
               </span>
             </div>
           </div>
+        </div>
+
+        {/* Danger zone — void sale */}
+        <div className="bg-error-container/20 border border-error/20 rounded-xl p-5 space-y-3">
+          <p className="font-label text-xs font-bold uppercase tracking-wider text-error">
+            Danger zone
+          </p>
+          <p className="text-sm text-on-surface-variant">
+            Voiding this sale will reverse the stock decrement and hide it from
+            all lists. Payments on the sale are kept for the audit trail but
+            will no longer affect the books.
+          </p>
+          {voidError && (
+            <p className="text-sm text-error font-medium">{voidError}</p>
+          )}
+          <button
+            onClick={handleVoidSale}
+            disabled={voiding}
+            type="button"
+            className="w-full h-12 rounded-xl bg-error-container text-on-error-container font-bold disabled:opacity-50 active:scale-[0.98] transition-transform flex items-center justify-center gap-2"
+          >
+            <span className="material-symbols-outlined text-base">
+              cancel
+            </span>
+            {voiding ? "Voiding…" : "Void this sale"}
+          </button>
         </div>
       </main>
 

@@ -42,6 +42,7 @@ async function getCustomerDetail(id: string) {
     where: { id },
     include: {
       sales: {
+        where: { voidedAt: null },
         include: {
           items: true,
           payments: true,

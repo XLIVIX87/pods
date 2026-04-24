@@ -15,6 +15,7 @@ async function getHomeData() {
     }),
     prisma.sale.findMany({
       where: {
+        voidedAt: null,
         date: {
           gte: new Date(new Date().setHours(0, 0, 0, 0)),
         },
@@ -24,6 +25,7 @@ async function getHomeData() {
       take: 10,
     }),
     prisma.sale.findMany({
+      where: { voidedAt: null },
       include: { payments: true },
     }),
     prisma.purchase.count({ where: { status: "PENDING_CHECK" } }),
@@ -44,6 +46,7 @@ async function getHomeData() {
   const kegCount = kegStock?.quantity ?? 0;
 
   const recentSales = await prisma.sale.findMany({
+    where: { voidedAt: null },
     include: { customer: true, payments: true },
     orderBy: { date: "desc" },
     take: 5,
