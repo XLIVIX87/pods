@@ -18,12 +18,12 @@ KEG_SIZE_L = 25
 
 # (date, supplier, kegs, price/keg, logistics/keg, note)
 PURCHASES = [
-    ("2026-01-19", "Unspecified Supplier", 5,  60_000, 0,     "Source quoted total only (300k); price/keg derived."),
-    ("2026-02-10", "Unspecified Supplier", 7,  45_000, 0,     "Source said '47k each' but stated total 315k implies 45k. Trusted total."),
-    ("2026-02-11", "Unspecified Supplier", 10, 48_000, 0,     ""),
-    ("2026-02-16", "Unspecified Supplier", 20, 41_500, 4_000, "Logistics 4k/keg from later message — only 20-keg load on record."),
-    ("2026-03-17", "Prime Foods",          5,  50_500, 0,     ""),
-    ("2026-03-19", "Prime Foods",          10, 41_500, 6_000, "Logistics 6k/keg — assumed applies to most recent 10-keg load (two such loads exist)."),
+    ("2026-01-19", "Tomike from Ondo", 5,  60_000, 0,     "Source quoted total only (300k); price/keg derived."),
+    ("2026-02-10", "Tomike from Ondo", 7,  45_000, 0,     "Stated total 315k confirmed (315/7 = 45k/keg)."),
+    ("2026-02-11", "Tomike from Ondo", 10, 48_000, 0,     ""),
+    ("2026-02-16", "Tomike from Ondo", 20, 41_500, 4_000, "Logistics 4k/keg from later message — only 20-keg load on record."),
+    ("2026-03-17", "Daniela PNC Tropical Foods",          5,  50_500, 0,     ""),
+    ("2026-03-19", "Daniela PNC Tropical Foods",          10, 41_500, 6_000, "Logistics 6k/keg — assumed applies to most recent 10-keg load (two such loads exist)."),
 ]
 
 OUT = Path(__file__).resolve().parent / "cyfoods-ledger.xlsx"
@@ -235,11 +235,9 @@ def build_open_questions(ws):
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=2)
 
     rows = [
-        ("Q1", "What's the supplier for the Jan 19 / Feb 10 / Feb 11 / Feb 16 purchases? (Currently grouped under 'Unspecified Supplier'.)"),
-        ("Q2", "Feb 10 had a discrepancy: '47k per keg' but '315k total for 7'. We trusted the total (= 45k/keg). Confirm which is right."),
-        ("Q3", "Logistics: '20 rubbers @ 4k each' was applied to the 20-keg Feb 16 load. '10 rubbers @ 6k each' was applied to Mar 19 (Prime Foods). Confirm — could it have applied to Feb 11 instead?"),
-        ("Q4", "Were any of these kegs sold, packed, or repackaged before today? (Currently we assume all 57 kegs are still on hand.)"),
-        ("Q5", "Any other purchases between Jan 19 and Mar 19, or after Mar 19, that aren't on this list?"),
+        ("Q1", "Logistics: '20 rubbers @ 4k each' was applied to the 20-keg Feb 16 load (Tomike). '10 rubbers @ 6k each' was applied to Mar 19 (Daniela PNC). Confirm — could it have applied to Feb 11 instead?"),
+        ("Q2", "Were any of these kegs sold, packed, or repackaged before today? (Currently we assume all 57 kegs are still on hand.)"),
+        ("Q3", "Any other purchases between Jan 19 and Mar 19, or after Mar 19, that aren't on this list?"),
     ]
 
     h1 = ws.cell(row=3, column=1, value="#")

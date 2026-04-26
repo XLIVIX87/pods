@@ -18,19 +18,19 @@ const prisma = new PrismaClient({ adapter });
  *     10-keg load, since two 10-keg loads exist and only one logistics
  *     line for "10 rubbers").
  *   • Suppliers without a name in the source are grouped under
- *     "Unspecified Supplier" — Mary should rename later.
+ *     "Tomike from Ondo" — Mary should rename later.
  *   • All purchases are marked ACCEPTED with a passing quality check, since
  *     they happened in the past and the kegs are physically on hand.
  */
 
 const PURCHASES = [
   // date           supplier             kegs price/keg logistics/keg
-  { date: "2026-01-19", supplier: "Unspecified Supplier", kegs: 5,  pricePerKeg: 60_000, logisticsPerKeg: 0 },
-  { date: "2026-02-10", supplier: "Unspecified Supplier", kegs: 7,  pricePerKeg: 45_000, logisticsPerKeg: 0 },
-  { date: "2026-02-11", supplier: "Unspecified Supplier", kegs: 10, pricePerKeg: 48_000, logisticsPerKeg: 0 },
-  { date: "2026-02-16", supplier: "Unspecified Supplier", kegs: 20, pricePerKeg: 41_500, logisticsPerKeg: 4_000 },
-  { date: "2026-03-17", supplier: "Prime Foods",          kegs: 5,  pricePerKeg: 50_500, logisticsPerKeg: 0 },
-  { date: "2026-03-19", supplier: "Prime Foods",          kegs: 10, pricePerKeg: 41_500, logisticsPerKeg: 6_000 },
+  { date: "2026-01-19", supplier: "Tomike from Ondo", kegs: 5,  pricePerKeg: 60_000, logisticsPerKeg: 0 },
+  { date: "2026-02-10", supplier: "Tomike from Ondo", kegs: 7,  pricePerKeg: 45_000, logisticsPerKeg: 0 },
+  { date: "2026-02-11", supplier: "Tomike from Ondo", kegs: 10, pricePerKeg: 48_000, logisticsPerKeg: 0 },
+  { date: "2026-02-16", supplier: "Tomike from Ondo", kegs: 20, pricePerKeg: 41_500, logisticsPerKeg: 4_000 },
+  { date: "2026-03-17", supplier: "Daniela PNC Tropical Foods",          kegs: 5,  pricePerKeg: 50_500, logisticsPerKeg: 0 },
+  { date: "2026-03-19", supplier: "Daniela PNC Tropical Foods",          kegs: 10, pricePerKeg: 41_500, logisticsPerKeg: 6_000 },
 ] as const;
 
 const KEG_SIZE_LITRES = 25;

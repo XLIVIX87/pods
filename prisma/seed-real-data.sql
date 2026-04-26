@@ -28,8 +28,8 @@ RESTART IDENTITY CASCADE;
 
 -- 2. Suppliers
 INSERT INTO suppliers (id, name, "createdAt", "updatedAt") VALUES
-  ('sup_unspec_001', 'Unspecified Supplier', NOW(), NOW()),
-  ('sup_prime_001',  'Prime Foods',          NOW(), NOW());
+  ('sup_unspec_001', 'Tomike from Ondo', NOW(), NOW()),
+  ('sup_prime_001',  'Daniela PNC Tropical Foods',          NOW(), NOW());
 
 -- 3. Purchases (all ACCEPTED).
 --    totalCost = kegs * pricePerKeg + transportCost
